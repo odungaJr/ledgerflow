@@ -9,6 +9,7 @@ Endpoints:
   PATCH /transactions/{id}        – confirm/update category
   DELETE /transactions/{id}       – soft-delete (sets category to None)
 """
+import logging
 import uuid
 from datetime import date
 from typing import Optional
@@ -24,6 +25,7 @@ from app.services.importer import import_csv, import_pdf
 from app.services.ai_engine import categorise_batch
 
 router = APIRouter(prefix="/transactions", tags=["Transactions"])
+logger = logging.getLogger(__name__)
 
 
 # ── Pydantic schemas ───────────────────────────────────────────────────────────
@@ -89,10 +91,15 @@ def _persist_transactions(raw_rows: list[dict], db: Session) -> tuple[int, int]:
     return inserted, skipped
 
 
-def _run_ai_categorisation(raw_rows: list[dict], db: Session) -> None:
+def _run_ai_categorisation(raw_rows: list[dict], db: Session) -> bool:
     """
     Call the AI engine and write category + confidence back to the DB.
     Skips transactions whose fingerprint was already in the DB (already categorised).
+
+    Returns True if categorisation ran (or there was nothing to categorise),
+    False if the AI service failed. The transactions themselves are already
+    persisted by this point, so an AI failure here must not fail the request —
+    it just means categorisation is left pending for the user to do manually.
     """
     # Fetch freshly inserted transactions using fingerprints
     fingerprints = [r["fingerprint"] for r in raw_rows]
@@ -103,9 +110,13 @@ def _run_ai_categorisation(raw_rows: list[dict], db: Session) -> None:
         for t in txns if t.category_id is None
     ]
     if not payload:
-        return
+        return True
 
-    suggestions = categorise_batch(payload)
+    try:
+        suggestions = categorise_batch(payload)
+    except Exception:
+        logger.exception("AI categorisation failed; transactions remain uncategorised")
+        return False
 
     # Build a name→id lookup for categories
     categories = {c.name: c for c in db.query(Category).all()}
@@ -122,6 +133,7 @@ def _run_ai_categorisation(raw_rows: list[dict], db: Session) -> None:
         txn.is_confirmed   = False
 
     db.commit()
+    return True
 
 
 # ── Endpoints ──────────────────────────────────────────────────────────────────
@@ -139,9 +151,14 @@ async def import_csv_file(
         raise HTTPException(status_code=422, detail=str(e))
 
     inserted, skipped = _persist_transactions(rows, db)
-    _run_ai_categorisation(rows, db)
+    categorised = _run_ai_categorisation(rows, db)
 
-    return {"inserted": inserted, "skipped": skipped, "total_parsed": len(rows)}
+    return {
+        "inserted": inserted,
+        "skipped": skipped,
+        "total_parsed": len(rows),
+        "categorised": categorised,
+    }
 
 
 @router.post("/import/pdf", summary="Import transactions from a PDF bank statement")
@@ -156,9 +173,14 @@ async def import_pdf_file(
         raise HTTPException(status_code=422, detail="No transactions could be extracted from this PDF.")
 
     inserted, skipped = _persist_transactions(rows, db)
-    _run_ai_categorisation(rows, db)
+    categorised = _run_ai_categorisation(rows, db)
 
-    return {"inserted": inserted, "skipped": skipped, "total_parsed": len(rows)}
+    return {
+        "inserted": inserted,
+        "skipped": skipped,
+        "total_parsed": len(rows),
+        "categorised": categorised,
+    }
 
 
 @router.get("", response_model=list[TransactionOut], summary="List transactions")
