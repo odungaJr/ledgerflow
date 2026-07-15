@@ -19,13 +19,12 @@ Hardening the LedgerFlow backend (FastAPI + PostgreSQL + Claude-powered categori
 - Ran the app end-to-end locally for the first time: installed Python 3.11 (the code uses 3.10+ `X | None` syntax; the machine only had 3.9) and PostgreSQL 15 via Homebrew, added the missing `alembic.ini` (migrations couldn't run without it), and verified the import → categorise → budget → dashboard flow via curl and the Swagger UI
 - Fixed import endpoints returning HTTP 500 even when the import itself succeeded — AI categorisation failures are now caught and reported via a `categorised` flag instead of crashing the request
 - Removed the unused Redis service from `docker-compose.yml`
+- Added an `/accounts` CRUD router (create/list/get/patch/delete) — previously the only way to get an account into the database was a direct SQL insert. 9 new router tests (40 total), verified end-to-end against real Postgres and the Swagger UI
 
 ## Blockers
-- No `/accounts` endpoint exists — transactions/budgets assume an account already exists, but there's no way to create one through the API yet
 - No `ANTHROPIC_API_KEY` configured locally, so AI categorisation/insights are untested against the real Claude API (only the failure path is verified so far)
 
 ## Next Steps
-- Add an `/accounts` CRUD router
 - Decide on a frontend approach (CORS is already configured for a Next.js dev server on `localhost:3000`, but no frontend exists yet)
 - Set a real `ANTHROPIC_API_KEY` locally and verify the AI categorisation/insights happy path
 
