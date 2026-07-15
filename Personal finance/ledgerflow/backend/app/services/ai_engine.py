@@ -146,7 +146,7 @@ Write a concise, friendly financial insights report (200–300 words). Structure
 Write in plain English. Be specific with numbers. Avoid generic advice."""
 
     message = _client.messages.create(
-        model="claude-sonnet-4-6",    # stronger model for nuanced narrative
+        model="claude-sonnet-5",    # stronger model for nuanced narrative
         max_tokens=600,
         messages=[{"role": "user", "content": prompt}],
     )
