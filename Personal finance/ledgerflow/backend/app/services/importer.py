@@ -44,10 +44,15 @@ def _make_fingerprint(account_id: str, txn_date: date, description: str, amount:
 
 
 def _to_decimal(value) -> Decimal | None:
-    """Coerce a cell value to Decimal; return None on failure."""
+    """Coerce a cell value to Decimal; return None on failure or blank/NaN cells."""
     try:
         cleaned = str(value).replace(",", "").replace(" ", "")
-        return Decimal(cleaned)
+        if cleaned.lower() in ("", "nan", "none"):
+            return None
+        result = Decimal(cleaned)
+        if result.is_nan():
+            return None
+        return result
     except (InvalidOperation, TypeError):
         return None
 
