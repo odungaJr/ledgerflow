@@ -90,7 +90,11 @@ Transactions:
         if raw.startswith("json"):
             raw = raw[4:]
 
-    parsed = json.loads(raw)
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        # Malformed response — skip this batch rather than failing the whole import.
+        return []
 
     results = []
     for item in parsed:

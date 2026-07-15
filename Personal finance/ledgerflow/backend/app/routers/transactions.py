@@ -75,7 +75,14 @@ def _persist_transactions(raw_rows: list[dict], db: Session) -> tuple[int, int]:
             balance_after= row["balance_after"],
             fingerprint  = row["fingerprint"],
         )
-        db.add(txn)
+        try:
+            # SAVEPOINT so a failed row only rolls back itself, not the whole batch.
+            with db.begin_nested():
+                db.add(txn)
+        except IntegrityError:
+            # Duplicate fingerprint within this same batch (or a concurrent import) — skip it.
+            skipped += 1
+            continue
         inserted += 1
 
     db.commit()
