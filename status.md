@@ -1,5 +1,5 @@
 # Personal Fintech — FinTrack
-**Last updated:** 2026-07-15
+**Last updated:** 2026-07-16
 
 ---
 
@@ -7,7 +7,7 @@
 In Progress
 
 ## What I'm Working On
-Hardening the LedgerFlow backend (FastAPI + PostgreSQL + Claude-powered categorisation) — fixing reliability gaps found through testing and getting the project onto solid engineering footing (git, tests, a working local dev setup) before starting the frontend.
+Backend is hardened and tested. Now building out the frontend (Next.js) against the FastAPI API.
 
 ## Completed This Week
 - Initialized git and pushed to a private GitHub repo (`odungaJr/ledgerflow`)
@@ -20,14 +20,15 @@ Hardening the LedgerFlow backend (FastAPI + PostgreSQL + Claude-powered categori
 - Fixed import endpoints returning HTTP 500 even when the import itself succeeded — AI categorisation failures are now caught and reported via a `categorised` flag instead of crashing the request
 - Removed the unused Redis service from `docker-compose.yml`
 - Added an `/accounts` CRUD router (create/list/get/patch/delete) — previously the only way to get an account into the database was a direct SQL insert. 9 new router tests (40 total), verified end-to-end against real Postgres and the Swagger UI
+- Added a `GET /categories` endpoint (needed for the frontend's category dropdowns; 2 more tests, 42 total)
+- Built the frontend: `Personal finance/ledgerflow/frontend` (Next.js 16 + React 19 + TypeScript, plain responsive CSS, no framework). Dashboard, Accounts, Transactions (CSV import + inline categorisation), and Budgets pages, all wired to the real API. Responsive nav (hamburger below 720px), tables collapse to stacked cards on narrow screens. Verified end-to-end at 375px and 1280px against real Postgres data, including creating records through the actual forms
 
 ## Blockers
 - No `ANTHROPIC_API_KEY` configured locally, so AI categorisation/insights are untested against the real Claude API (only the failure path is verified so far)
 
 ## Next Steps
-- Decide on a frontend approach (CORS is already configured for a Next.js dev server on `localhost:3000`, but no frontend exists yet)
 - Set a real `ANTHROPIC_API_KEY` locally and verify the AI categorisation/insights happy path
 
 ## Notes
-- Local dev now requires Python 3.10+ and PostgreSQL — see `Personal finance/ledgerflow/backend/requirements-dev.txt` and `pytest.ini` for the test setup
+- Local dev now requires Python 3.10+, PostgreSQL, and Node.js — see `Personal finance/ledgerflow/backend/requirements-dev.txt`/`pytest.ini` (backend tests) and `Personal finance/ledgerflow/frontend/.env.example` (frontend API URL)
 - `fintrack-archive.json` (repo root) was removed — it was an empty, unreferenced stub from an earlier "FinTrack" naming pass, with no accounts/transactions and no code reading it
