@@ -87,10 +87,15 @@ export const patchTransaction = (
 export const deleteTransaction = (id: string) =>
   request<{ status: string; id: string }>(`/transactions/${id}`, { method: "DELETE" });
 
-export async function importCsv(accountId: string, file: File): Promise<ImportResult> {
+export async function importCsv(
+  accountId: string,
+  file: File,
+  autoCategorise = true
+): Promise<ImportResult> {
   const form = new FormData();
   form.append("account_id", accountId);
   form.append("file", file);
+  form.append("auto_categorise", String(autoCategorise));
   const res = await fetch(`${API_URL}/transactions/import/csv`, { method: "POST", body: form });
   if (!res.ok) {
     throw new ApiError(res.status, await extractErrorDetail(res));

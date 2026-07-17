@@ -22,13 +22,16 @@ Backend is hardened and tested. Now building out the frontend (Next.js) against 
 - Added an `/accounts` CRUD router (create/list/get/patch/delete) — previously the only way to get an account into the database was a direct SQL insert. 9 new router tests (40 total), verified end-to-end against real Postgres and the Swagger UI
 - Added a `GET /categories` endpoint (needed for the frontend's category dropdowns; 2 more tests, 42 total)
 - Built the frontend: `Personal finance/ledgerflow/frontend` (Next.js 16 + React 19 + TypeScript, plain responsive CSS, no framework). Dashboard, Accounts, Transactions (CSV import + inline categorisation), and Budgets pages, all wired to the real API. Responsive nav (hamburger below 720px), tables collapse to stacked cards on narrow screens. Verified end-to-end at 375px and 1280px against real Postgres data, including creating records through the actual forms
+- Added a real `ANTHROPIC_API_KEY` to `backend/.env` and confirmed it authenticates correctly against the Claude API (uvicorn's `--env-file` flag loads it before the app imports, no code change needed). The reliability fix from earlier worked as intended under a real failure: import still returned HTTP 200 with `categorised: false` and the transactions were persisted correctly
+- Made AI categorisation opt-in per import: `auto_categorise` form field on `/transactions/import/{csv,pdf}` (default `true`), plus an "Auto-categorise with AI" checkbox on the Transactions import form. When unchecked, the AI call is skipped entirely rather than attempted-and-caught. 2 new tests (44 total)
 
 ## Blockers
-- No `ANTHROPIC_API_KEY` configured locally, so AI categorisation/insights are untested against the real Claude API (only the failure path is verified so far)
+- Anthropic account has insufficient credit balance — API calls fail with `400: Your credit balance is too low to access the Anthropic API`. Needs billing/credits added at console.anthropic.com before the AI categorisation/insights happy path can be verified
 
 ## Next Steps
-- Set a real `ANTHROPIC_API_KEY` locally and verify the AI categorisation/insights happy path
+- Add credits/billing to the Anthropic account, then re-verify AI categorisation and insights generation end-to-end
 
 ## Notes
 - Local dev now requires Python 3.10+, PostgreSQL, and Node.js — see `Personal finance/ledgerflow/backend/requirements-dev.txt`/`pytest.ini` (backend tests) and `Personal finance/ledgerflow/frontend/.env.example` (frontend API URL)
 - `fintrack-archive.json` (repo root) was removed — it was an empty, unreferenced stub from an earlier "FinTrack" naming pass, with no accounts/transactions and no code reading it
+- **Security note:** `backend/.env.example` was briefly edited in the working tree to contain the real `ANTHROPIC_API_KEY` instead of a placeholder — caught before any commit, reverted to the placeholder. It was never in git history. Keep real secrets only in `backend/.env` (gitignored), never in the `.example` files
