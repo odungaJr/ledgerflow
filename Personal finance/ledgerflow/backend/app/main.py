@@ -6,6 +6,7 @@ Mounts all routers and applies CORS for local frontend development.
 Run with:
   uvicorn app.main:app --reload --port 8000
 """
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -30,10 +31,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Allow the Next.js dev server to call the API
+# Allow the Next.js frontend to call the API — comma-separated origins,
+# e.g. CORS_ORIGINS=https://ledgerflow.example.com,http://localhost:3000
+_cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
