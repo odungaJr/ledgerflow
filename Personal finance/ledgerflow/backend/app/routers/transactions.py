@@ -142,6 +142,7 @@ def _run_ai_categorisation(raw_rows: list[dict], db: Session) -> bool:
 async def import_csv_file(
     account_id: str = Form(...),
     file:       UploadFile = File(...),
+    auto_categorise: bool = Form(True),
     db:         Session = Depends(get_db),
 ):
     contents = await file.read()
@@ -151,7 +152,7 @@ async def import_csv_file(
         raise HTTPException(status_code=422, detail=str(e))
 
     inserted, skipped = _persist_transactions(rows, db)
-    categorised = _run_ai_categorisation(rows, db)
+    categorised = _run_ai_categorisation(rows, db) if auto_categorise else False
 
     return {
         "inserted": inserted,
@@ -165,6 +166,7 @@ async def import_csv_file(
 async def import_pdf_file(
     account_id: str = Form(...),
     file:       UploadFile = File(...),
+    auto_categorise: bool = Form(True),
     db:         Session = Depends(get_db),
 ):
     contents = await file.read()
@@ -173,7 +175,7 @@ async def import_pdf_file(
         raise HTTPException(status_code=422, detail="No transactions could be extracted from this PDF.")
 
     inserted, skipped = _persist_transactions(rows, db)
-    categorised = _run_ai_categorisation(rows, db)
+    categorised = _run_ai_categorisation(rows, db) if auto_categorise else False
 
     return {
         "inserted": inserted,

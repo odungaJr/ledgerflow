@@ -23,6 +23,7 @@ export default function TransactionsPage() {
 
   const [importAccountId, setImportAccountId] = useState("");
   const [importFile, setImportFile] = useState<File | null>(null);
+  const [autoCategorise, setAutoCategorise] = useState(true);
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
@@ -57,7 +58,7 @@ export default function TransactionsPage() {
     setImportError(null);
     setImportResult(null);
     try {
-      const result = await importCsv(importAccountId, importFile);
+      const result = await importCsv(importAccountId, importFile, autoCategorise);
       setImportResult(result);
       setImportFile(null);
       loadTransactions();
@@ -124,6 +125,20 @@ export default function TransactionsPage() {
               {importing ? "Importing…" : "Import CSV"}
             </button>
           </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <input
+              id="auto-categorise"
+              type="checkbox"
+              style={{ width: "auto" }}
+              checked={autoCategorise}
+              onChange={(e) => setAutoCategorise(e.target.checked)}
+            />
+            <label htmlFor="auto-categorise" style={{ cursor: "pointer" }}>
+              Auto-categorise with AI
+            </label>
+          </div>
+
           {importError && <div className="alert error">{importError}</div>}
           {importResult && (
             <div className="alert info">
