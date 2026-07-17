@@ -192,6 +192,7 @@ def list_transactions(
     from_date:  Optional[date] = Query(None),
     to_date:    Optional[date] = Query(None),
     txn_type:   Optional[str]  = Query(None, description="debit | credit"),
+    search:     Optional[str]  = Query(None, description="substring match on description"),
     limit:      int = Query(100, le=500),
     offset:     int = Query(0),
     db:         Session = Depends(get_db),
@@ -209,6 +210,8 @@ def list_transactions(
         q = q.filter(Transaction.date <= to_date)
     if txn_type:
         q = q.filter(Transaction.type == txn_type)
+    if search:
+        q = q.filter(Transaction.description.ilike(f"%{search}%"))
 
     txns = q.order_by(Transaction.date.desc()).offset(offset).limit(limit).all()
 

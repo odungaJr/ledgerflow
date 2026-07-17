@@ -66,12 +66,22 @@ export const getCategories = () => request<Category[]>("/categories");
 export const getTransactions = (params?: {
   account_id?: string;
   category?: string;
+  from_date?: string;
+  to_date?: string;
+  txn_type?: string;
+  search?: string;
   limit?: number;
+  offset?: number;
 }) => {
   const qs = new URLSearchParams();
   if (params?.account_id) qs.set("account_id", params.account_id);
   if (params?.category) qs.set("category", params.category);
+  if (params?.from_date) qs.set("from_date", params.from_date);
+  if (params?.to_date) qs.set("to_date", params.to_date);
+  if (params?.txn_type) qs.set("txn_type", params.txn_type);
+  if (params?.search) qs.set("search", params.search);
   if (params?.limit) qs.set("limit", String(params.limit));
+  if (params?.offset) qs.set("offset", String(params.offset));
   const query = qs.toString();
   return request<Transaction[]>(`/transactions${query ? `?${query}` : ""}`);
 };
@@ -87,16 +97,20 @@ export const patchTransaction = (
 export const deleteTransaction = (id: string) =>
   request<{ status: string; id: string }>(`/transactions/${id}`, { method: "DELETE" });
 
-export async function importCsv(
+export async function importStatement(
   accountId: string,
   file: File,
+  fileType: "csv" | "pdf",
   autoCategorise = true
 ): Promise<ImportResult> {
   const form = new FormData();
   form.append("account_id", accountId);
   form.append("file", file);
   form.append("auto_categorise", String(autoCategorise));
-  const res = await fetch(`${API_URL}/transactions/import/csv`, { method: "POST", body: form });
+  const res = await fetch(`${API_URL}/transactions/import/${fileType}`, {
+    method: "POST",
+    body: form,
+  });
   if (!res.ok) {
     throw new ApiError(res.status, await extractErrorDetail(res));
   }
