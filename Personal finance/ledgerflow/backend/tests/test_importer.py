@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal
 
 import pytest
@@ -5,11 +6,14 @@ import pytest
 from app.services.importer import (
     _make_fingerprint,
     _map_columns,
+    _map_pdf_columns,
     _parse_date,
     _parse_pdf_row,
+    _parse_pdf_words,
     _to_decimal,
     _PDF_LINE_RE,
     import_csv,
+    import_pdf,
 )
 
 ACCOUNT_ID = "11111111-1111-1111-1111-111111111111"
@@ -132,16 +136,137 @@ def test_pdf_line_regex_matches_typical_statement_line():
     assert balance == "2,340,500.00"
 
 
+STANDARD_COL_MAP = {"date": 0, "description": 1, "debit": 2, "credit": 3, "balance": 4}
+
+
 def test_parse_pdf_row_skips_header_row():
-    assert _parse_pdf_row(["Date", "Description", "Debit", "Credit", "Balance"], ACCOUNT_ID) is None
+    row = ["Date", "Description", "Debit", "Credit", "Balance"]
+    assert _parse_pdf_row(row, STANDARD_COL_MAP, ACCOUNT_ID) is None
 
 
 def test_parse_pdf_row_parses_debit_row():
-    row = _parse_pdf_row(["15/04/2024", "ATM WITHDRAWAL", "50000.00", "", "2340500.00"], ACCOUNT_ID)
+    row = _parse_pdf_row(
+        ["15/04/2024", "ATM WITHDRAWAL", "50000.00", "", "2340500.00"], STANDARD_COL_MAP, ACCOUNT_ID
+    )
     assert row is not None
     assert row["type"] == "debit"
     assert row["amount"] == Decimal("50000.00")
 
 
 def test_parse_pdf_row_returns_none_when_no_amount():
-    assert _parse_pdf_row(["15/04/2024", "NO AMOUNT ROW"], ACCOUNT_ID) is None
+    col_map = {"date": 0, "description": 1}
+    assert _parse_pdf_row(["15/04/2024", "NO AMOUNT ROW"], col_map, ACCOUNT_ID) is None
+
+
+def test_parse_pdf_row_handles_non_standard_column_order():
+    # Some banks list Deposit (credit) before Withdrawal (debit), plus extra columns.
+    col_map = {"date": 1, "description": 2, "credit": 3, "debit": 4, "balance": 6}
+    row = ["SN", "17/04/2026", "SALARY", "1500000.00", "", "extra", "3540500.00"]
+    txn = _parse_pdf_row(row, col_map, ACCOUNT_ID)
+    assert txn is not None
+    assert txn["type"] == "credit"
+    assert txn["amount"] == Decimal("1500000.00")
+    assert txn["balance_after"] == Decimal("3540500.00")
+
+
+# ── _map_pdf_columns ─────────────────────────────────────────────────────────
+
+def test_map_pdf_columns_handles_multiline_headers_and_extra_columns():
+    header = ["SN", "TRANS DATE", "DETAILS", "CHANNEL ID", "VALUE DATE", "DEBIT", "CREDIT", "BOOK BALANCE"]
+    col_map = _map_pdf_columns(header)
+    assert col_map["date"] == 1  # "trans date" preferred over "value date"
+    assert col_map["description"] == 2
+    assert col_map["debit"] == 5
+    assert col_map["credit"] == 6
+    assert col_map["balance"] == 7
+
+
+def test_map_pdf_columns_deposit_before_withdrawal():
+    header = ["Transaction\nDate", "Details", "Deposit", "Withdrawal", None, "Balance"]
+    col_map = _map_pdf_columns(header)
+    assert col_map["date"] == 0
+    assert col_map["description"] == 1
+    assert col_map["credit"] == 2  # Deposit
+    assert col_map["debit"] == 3   # Withdrawal
+    assert col_map["balance"] == 5
+
+
+# ── _parse_date with embedded time ──────────────────────────────────────────
+
+def test_parse_date_strips_embedded_time_component():
+    parsed = _parse_date("2026-04-17\n23:10:53")
+    assert parsed == date(2026, 4, 17)
+
+
+# ── import_pdf error handling ────────────────────────────────────────────────
+
+def test_import_pdf_returns_empty_list_on_unopenable_pdf(monkeypatch):
+    def _raise(*args, **kwargs):
+        raise TypeError("'PDFObjRef' object is not subscriptable")
+
+    monkeypatch.setattr("app.services.importer.pdfplumber.open", _raise)
+    assert import_pdf(b"not a real pdf", ACCOUNT_ID) == []
+
+
+# ── _parse_pdf_words (word-position reconstruction) ─────────────────────────
+# Mirrors the real layout of a bank statement whose line/table text extraction
+# scrambles reading order (description wraps around the date, amounts land on
+# a separate line from either) but whose word bounding boxes stay reliable.
+
+class _FakePage:
+    def __init__(self, words):
+        self._words = words
+
+    def extract_words(self):
+        return self._words
+
+
+def test_parse_pdf_words_reconstructs_a_scrambled_transaction():
+    words = [
+        {"text": "2026-04-13", "top": 203.6, "x0": 52.8, "x1": 93.2},
+        {"text": "CRDBBANK", "top": 207.8, "x0": 110.5, "x1": 153.9},
+        {"text": "Transfer", "top": 207.8, "x0": 156.4, "x1": 200.0},
+        {"text": "500,000", "top": 208.2, "x0": 364.2, "x1": 393.0},
+        {"text": "0", "top": 208.2, "x0": 457.3, "x1": 461.8},
+        {"text": "500,596.87", "top": 208.2, "x0": 509.3, "x1": 549.0},
+        {"text": "22:44:09", "top": 212.8, "x0": 57.4, "x1": 88.6},
+    ]
+    rows = _parse_pdf_words(_FakePage(words), ACCOUNT_ID)
+    assert len(rows) == 1
+    txn = rows[0]
+    assert txn["date"] == date(2026, 4, 13)
+    assert txn["type"] == "credit"
+    assert txn["amount"] == Decimal("500000")
+    assert txn["balance_after"] == Decimal("500596.87")
+    assert "CRDBBANK" in txn["description"]
+    assert "Transfer" in txn["description"]
+    assert "22:44:09" not in txn["description"]  # time token excluded
+
+
+def test_parse_pdf_words_splits_multiple_transactions_by_date_boundary():
+    words = [
+        {"text": "2026-04-13", "top": 100.0, "x0": 52.8, "x1": 93.2},
+        {"text": "First", "top": 100.0, "x0": 110.5, "x1": 130.0},
+        {"text": "40,000", "top": 100.0, "x0": 419.0, "x1": 450.0},
+        {"text": "0", "top": 100.0, "x0": 364.0, "x1": 370.0},
+        {"text": "460,596.87", "top": 100.0, "x0": 509.3, "x1": 549.0},
+        {"text": "2026-04-14", "top": 120.0, "x0": 52.8, "x1": 93.2},
+        {"text": "Second", "top": 120.0, "x0": 110.5, "x1": 135.0},
+        {"text": "0", "top": 120.0, "x0": 419.0, "x1": 425.0},
+        {"text": "300,000", "top": 120.0, "x0": 364.0, "x1": 393.0},
+        {"text": "160,596.87", "top": 120.0, "x0": 509.3, "x1": 549.0},
+    ]
+    rows = _parse_pdf_words(_FakePage(words), ACCOUNT_ID)
+    assert [r["date"] for r in rows] == [date(2026, 4, 13), date(2026, 4, 14)]
+    assert rows[0]["type"] == "debit"
+    assert rows[1]["type"] == "credit"
+
+
+def test_parse_pdf_words_skips_rows_missing_all_three_amounts():
+    words = [
+        {"text": "2026-04-13", "top": 100.0, "x0": 52.8, "x1": 93.2},
+        {"text": "Incomplete", "top": 100.0, "x0": 110.5, "x1": 140.0},
+        {"text": "500,000", "top": 100.0, "x0": 364.0, "x1": 393.0},
+        # missing withdrawal and balance tokens
+    ]
+    assert _parse_pdf_words(_FakePage(words), ACCOUNT_ID) == []

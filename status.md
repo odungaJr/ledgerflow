@@ -1,5 +1,5 @@
 # Personal Fintech — FinTrack
-**Last updated:** 2026-07-16
+**Last updated:** 2026-07-27
 
 ---
 
@@ -34,6 +34,13 @@ Backend is hardened and tested. Now building out the frontend (Next.js) against 
   - `frontend/public/` was empty and git never tracked it (git doesn't track empty directories) — every local Docker build in this session had silently reused the leftover directory on disk instead of what was actually in the repo. Fixed with a `.gitkeep` ([PR #1](https://github.com/odungaJr/ledgerflow/pull/1)).
   - Docker Compose's own `.env` interpolation mangles bcrypt hashes: it treats a bare `$word` inside any `.env` value as a variable reference and blanks it out if unset, which silently corrupted `BASIC_AUTH_PASSWORD_HASH` (bcrypt hashes are `$`-heavy, e.g. `$2a$14$...`). Fixed by switching the `caddy` service from `environment: ${VAR}` to `env_file: .env` and documenting that the hash must have every `$` doubled to `$$` in `.env.example` (with a `sed` one-liner that does it automatically). Trade-off: lost the `:?`-based fail-fast check for a missing hash in the process — Caddy will just reject an empty/invalid one at its own startup instead.
 - Verified live against the real deployed site (`http://[REDACTED]/`, not just local): no/wrong credentials → 401 on both the page and `/api/*`, correct credentials → dashboard loads and account creation works through the actual browser UI over the public internet
+- **Fixed the PDF importer against real bank statements** (the user's actual statements from 2 different banks, 6 files total) — it extracted zero transactions from every one of them before this fix. Root causes were more fundamental than a single bug: the parser assumed a fixed column *position* (date, description, debit, credit, balance) rather than reading column *names*, so any bank with a different layout failed silently.
+  - Rewrote PDF table parsing to be header-aware (`_map_pdf_columns`), reusing the same alias system the CSV importer already had — handles extra columns (SN, Channel ID), reordered columns (Deposit before Withdrawal), and differently-named date columns (Trans Date vs Value Date vs Book Balance).
+  - Fixed `_parse_date` to strip embedded time components (`"2026-04-17\n23:10:53"` → just the date) and normalise embedded newlines in multi-line PDF cells.
+  - Added a new **word-position-based fallback parser** (`_parse_pdf_words`) for PDFs where pdfplumber's table/line-text extraction scrambles reading order entirely (one bank's statement had descriptions wrapping around the date, with amounts landing on a separate physical line from either) — reconstructs each transaction from word bounding-box coordinates instead, which stay reliable even when line-grouping doesn't. This is a general capability, not a single-bank hack.
+  - Fixed a related bug the investigation surfaced: a table whose *header* matched the expected columns but whose *data rows* were all misaligned/empty was being wrongly treated as "successfully parsed," which skipped the fallback tiers entirely for that page.
+  - One PDF has malformed encryption metadata that crashes `pdfminer` outright (a real bug in that library, not fixable from here) — now fails gracefully (0 transactions, no crash) instead of a 500.
+  - Result across the 6 real statements: 0 → 325 correctly-extracted transactions (131 + 48 + 56 + 56 + 34), spot-checked against the source text for correct dates/amounts/direction/balance. 8 new tests (56 total in the suite).
 
 ## Blockers
 - Anthropic account has insufficient credit balance — API calls fail with `400: Your credit balance is too low to access the Anthropic API`. Needs billing/credits added at console.anthropic.com before the AI categorisation/insights happy path can be verified
