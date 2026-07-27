@@ -2,7 +2,7 @@
 Transaction Import Engine
 =========================
 Handles two input types:
-  - CSV  → pandas-based parsing with column-name normalisation
+  - CSV  → stdlib csv parsing with column-name normalisation
   - PDF  → pdfplumber text extraction, line-by-line regex parsing
 
 Both paths produce a list of RawTransaction dicts that the caller
@@ -12,14 +12,14 @@ Usage:
     rows = import_csv(file_bytes, account_id)
     rows = import_pdf(file_bytes, account_id)
 """
+import csv
 import hashlib
 import io
 import re
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import TypedDict
 
-import pandas as pd
 import pdfplumber
 
 
@@ -57,19 +57,21 @@ def _to_decimal(value) -> Decimal | None:
         return None
 
 
+_DATE_FORMATS = [
+    "%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%d %b %Y", "%d-%b-%Y",
+    "%d.%m.%Y", "%d/%m/%y", "%d-%m-%y", "%Y/%m/%d", "%d %B %Y", "%d-%B-%Y",
+]
+
+
 def _parse_date(value) -> date | None:
-    """Try a few common East-African bank statement date formats."""
-    formats = ["%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%d %b %Y", "%d-%b-%Y"]
+    """Try a few common East-African bank statement date formats (day-first)."""
     value_str = str(value).strip()
-    for fmt in formats:
+    for fmt in _DATE_FORMATS:
         try:
-            return date.fromisoformat(pd.to_datetime(value_str, format=fmt).date().isoformat())
-        except Exception:
+            return datetime.strptime(value_str, fmt).date()
+        except ValueError:
             continue
-    try:
-        return pd.to_datetime(value_str, dayfirst=True).date()
-    except Exception:
-        return None
+    return None
 
 
 # ── CSV importer ───────────────────────────────────────────────────────────────
@@ -84,9 +86,9 @@ _COL_ALIASES = {
 }
 
 
-def _map_columns(df: pd.DataFrame) -> dict[str, str]:
-    """Return a mapping {canonical_name: actual_df_column} for recognised columns."""
-    lower_cols = {c.lower().strip(): c for c in df.columns}
+def _map_columns(fieldnames: list[str]) -> dict[str, str]:
+    """Return a mapping {canonical_name: actual_column_name} for recognised columns."""
+    lower_cols = {c.lower().strip(): c for c in fieldnames}
     mapping = {}
     for canonical, aliases in _COL_ALIASES.items():
         for alias in aliases:
@@ -101,21 +103,22 @@ def import_csv(file_bytes: bytes, account_id: str) -> list[RawTransaction]:
     Parse a CSV bank statement.
     Supports separate Debit/Credit columns or a single signed Amount column.
     """
-    df = pd.read_csv(io.BytesIO(file_bytes))
-    col = _map_columns(df)
+    text = file_bytes.decode("utf-8-sig")  # utf-8-sig strips a BOM if present
+    reader = csv.DictReader(io.StringIO(text))
+    col = _map_columns(reader.fieldnames or [])
 
     if "date" not in col or "description" not in col:
         raise ValueError("CSV must have at least Date and Description columns.")
 
     rows: list[RawTransaction] = []
 
-    for _, row in df.iterrows():
-        txn_date = _parse_date(row[col["date"]])
+    for row in reader:
+        txn_date = _parse_date(row.get(col["date"]))
         if txn_date is None:
             continue  # skip unparseable rows (headers embedded in body, etc.)
 
-        description = str(row[col["description"]]).strip()
-        if not description or description.lower() in ("nan", ""):
+        description = str(row.get(col["description"]) or "").strip()
+        if not description or description.lower() in ("nan", "none", ""):
             continue
 
         debit  = _to_decimal(row.get(col.get("debit",  ""), "")) or Decimal(0)
