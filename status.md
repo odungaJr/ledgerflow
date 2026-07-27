@@ -33,7 +33,7 @@ Backend is hardened and tested. Now building out the frontend (Next.js) against 
 - **Deployed to a real AWS EC2 test server** (Ubuntu 26.04, x86_64) via SSH — first genuine test of "build from source at the destination" on different hardware/architecture than the Mac this was developed on. Used a dedicated read-only GitHub deploy key (via `gh repo deploy-key add`) rather than sharing broader credentials. Found and fixed two real bugs that only a fresh clone/deploy could surface:
   - `frontend/public/` was empty and git never tracked it (git doesn't track empty directories) — every local Docker build in this session had silently reused the leftover directory on disk instead of what was actually in the repo. Fixed with a `.gitkeep` ([PR #1](https://github.com/odungaJr/ledgerflow/pull/1)).
   - Docker Compose's own `.env` interpolation mangles bcrypt hashes: it treats a bare `$word` inside any `.env` value as a variable reference and blanks it out if unset, which silently corrupted `BASIC_AUTH_PASSWORD_HASH` (bcrypt hashes are `$`-heavy, e.g. `$2a$14$...`). Fixed by switching the `caddy` service from `environment: ${VAR}` to `env_file: .env` and documenting that the hash must have every `$` doubled to `$$` in `.env.example` (with a `sed` one-liner that does it automatically). Trade-off: lost the `:?`-based fail-fast check for a missing hash in the process — Caddy will just reject an empty/invalid one at its own startup instead.
-- Verified live against the real deployed site (`http://[REDACTED]/`, not just local): no/wrong credentials → 401 on both the page and `/api/*`, correct credentials → dashboard loads and account creation works through the actual browser UI over the public internet
+- Verified live against the real deployed site (not just local): no/wrong credentials → 401 on both the page and `/api/*`, correct credentials → dashboard loads and account creation works through the actual browser UI over the public internet
 - **Fixed the PDF importer against real bank statements** (the user's actual statements from 2 different banks, 6 files total) — it extracted zero transactions from every one of them before this fix. Root causes were more fundamental than a single bug: the parser assumed a fixed column *position* (date, description, debit, credit, balance) rather than reading column *names*, so any bank with a different layout failed silently.
   - Rewrote PDF table parsing to be header-aware (`_map_pdf_columns`), reusing the same alias system the CSV importer already had — handles extra columns (SN, Channel ID), reordered columns (Deposit before Withdrawal), and differently-named date columns (Trans Date vs Value Date vs Book Balance).
   - Fixed `_parse_date` to strip embedded time components (`"2026-04-17\n23:10:53"` → just the date) and normalise embedded newlines in multi-line PDF cells.
@@ -51,7 +51,7 @@ Backend is hardened and tested. Now building out the frontend (Next.js) against 
 - `CORS_ORIGINS` and an absolute `NEXT_PUBLIC_API_URL` are only relevant if running frontend/backend directly without Caddy (e.g. local dev)
 
 ## Deployed instance
-- Live test deployment: `http://[REDACTED]/` (AWS EC2, HTTP Basic Auth gated — credentials shared with Moses separately, not stored here)
+- Live test deployment on AWS EC2 (HTTP Basic Auth gated — IP and credentials kept out of the repo, known locally)
 - Deploy key `ec2-testing-server` (read-only) is registered on the GitHub repo for this server's `git pull` access
 
 ## Notes
