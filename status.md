@@ -36,6 +36,7 @@ Backend is hardened and tested. Now building out the frontend (Next.js) against 
 - Add credits/billing to the Anthropic account, then re-verify AI categorisation and insights generation end-to-end
 - Decide on an actual hosting target (VPS, Fly.io, Render, etc.); when deploying remotely, set `NEXT_PUBLIC_API_URL` and `CORS_ORIGINS` to the real public addresses (not the localhost defaults)
 - Consider basic auth/access control before this goes anywhere beyond localhost — every API endpoint is currently open
+- Backend port 8000 stays publicly exposed by design (unlike Postgres) — the frontend is client-rendered, so users' browsers call the backend directly via `NEXT_PUBLIC_API_URL`/CORS. Locking it to `127.0.0.1` would break the app for every real user. If exposure needs reducing later, the real fix is a reverse proxy (nginx/Caddy) in front of both services, not a port binding tweak
 
 ## Notes
 - Local dev now requires Python 3.10+, PostgreSQL, and Node.js — see `Personal finance/ledgerflow/backend/requirements-dev.txt`/`pytest.ini` (backend tests) and `Personal finance/ledgerflow/frontend/.env.example` (frontend API URL)
