@@ -74,9 +74,8 @@ def test_fingerprint_differs_on_amount():
 # ── _map_columns ─────────────────────────────────────────────────────────────
 
 def test_map_columns_recognises_aliases():
-    import pandas as pd
-    df = pd.DataFrame(columns=["Transaction Date", "Particulars", "Withdrawal", "Deposit", "Running Balance"])
-    mapping = _map_columns(df)
+    fieldnames = ["Transaction Date", "Particulars", "Withdrawal", "Deposit", "Running Balance"]
+    mapping = _map_columns(fieldnames)
     assert mapping["date"] == "Transaction Date"
     assert mapping["description"] == "Particulars"
     assert mapping["debit"] == "Withdrawal"
