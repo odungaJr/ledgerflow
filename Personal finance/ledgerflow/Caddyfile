@@ -3,10 +3,6 @@
 }
 
 :80 {
-	basic_auth {
-		{$BASIC_AUTH_USER} {$BASIC_AUTH_PASSWORD_HASH}
-	}
-
 	handle_path /api/* {
 		reverse_proxy backend:8000
 	}
