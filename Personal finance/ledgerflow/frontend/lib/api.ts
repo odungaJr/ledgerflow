@@ -1,10 +1,14 @@
 import type {
   Account,
+  Asset,
+  AssetValueSnapshot,
+  AssetsSummary,
   BudgetStatus,
   Category,
   DashboardInsightsResponse,
   DashboardSummaryResponse,
   ImportResult,
+  IncomeEntry,
   Transaction,
 } from "./types";
 
@@ -140,6 +144,72 @@ export const updateBudget = (id: string, data: { limit_amount?: number; is_activ
 
 export const deleteBudget = (id: string) =>
   request<{ status: string; id: string }>(`/budgets/${id}`, { method: "DELETE" });
+
+// ── Income ───────────────────────────────────────────────────────────────────
+
+export const getIncomeEntries = (year?: number, month?: number) => {
+  const qs = new URLSearchParams();
+  if (year) qs.set("year", String(year));
+  if (month) qs.set("month", String(month));
+  const query = qs.toString();
+  return request<IncomeEntry[]>(`/income${query ? `?${query}` : ""}`);
+};
+
+export const createIncomeEntry = (data: {
+  source: string;
+  expected_amount: number;
+  expected_date: string;
+  category_name?: string;
+  is_recurring?: boolean;
+  recurrence_period?: string;
+  notes?: string;
+}) => request<IncomeEntry>("/income", { method: "POST", body: JSON.stringify(data) });
+
+export const patchIncomeEntry = (
+  id: string,
+  data: {
+    received_amount?: number;
+    received_date?: string;
+    expected_amount?: number;
+    expected_date?: string;
+    notes?: string;
+  }
+) => request<IncomeEntry>(`/income/${id}`, { method: "PATCH", body: JSON.stringify(data) });
+
+export const deleteIncomeEntry = (id: string) =>
+  request<{ status: string; id: string }>(`/income/${id}`, { method: "DELETE" });
+
+// ── Assets ───────────────────────────────────────────────────────────────────
+
+export const getAssets = () => request<Asset[]>("/assets");
+
+export const createAsset = (data: {
+  name: string;
+  asset_type: string;
+  quantity?: number;
+  currency?: string;
+  value_date: string;
+  total_value: number;
+  unit_value?: number;
+  notes?: string;
+}) => request<Asset>("/assets", { method: "POST", body: JSON.stringify(data) });
+
+export const patchAsset = (
+  id: string,
+  data: Partial<Pick<Asset, "name" | "asset_type" | "quantity" | "currency" | "is_active" | "notes">>
+) => request<Asset>(`/assets/${id}`, { method: "PATCH", body: JSON.stringify(data) });
+
+export const addAssetValue = (
+  id: string,
+  data: { value_date: string; total_value: number; unit_value?: number }
+) => request<Asset>(`/assets/${id}/values`, { method: "POST", body: JSON.stringify(data) });
+
+export const getAssetHistory = (id: string) => request<AssetValueSnapshot[]>(`/assets/${id}/history`);
+
+export const deleteAsset = (id: string) =>
+  request<{ status: string; id: string }>(`/assets/${id}`, { method: "DELETE" });
+
+export const getAssetsSummary = () => request<AssetsSummary>("/assets/summary");
 
 // ── Dashboard ────────────────────────────────────────────────────────────────
 

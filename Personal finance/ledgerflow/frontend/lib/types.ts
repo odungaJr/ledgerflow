@@ -56,9 +56,74 @@ export interface MonthlySummary {
   anomalies: unknown[];
 }
 
+export interface IncomeEntry {
+  id: string;
+  series_id: string | null;
+  source: string;
+  category: string | null;
+  expected_amount: number;
+  expected_date: string;
+  received_amount: number;
+  received_date: string | null;
+  is_recurring: boolean;
+  recurrence_period: "monthly" | "weekly" | null;
+  status: "pending" | "partial" | "received" | "overdue";
+  pending_amount: number;
+  notes: string | null;
+}
+
+export interface IncomeSummary {
+  total_expected: number;
+  total_received: number;
+  total_pending: number;
+  pending_count: number;
+  overdue_count: number;
+}
+
+export interface Asset {
+  id: string;
+  name: string;
+  asset_type: "cash" | "stocks" | "bonds" | "real_estate" | "vehicle" | "other";
+  quantity: number | null;
+  currency: string;
+  is_active: boolean;
+  notes: string | null;
+  current_value: number | null;
+  value_date: string | null;
+  change_amount: number | null;
+}
+
+export interface AssetValueSnapshot {
+  id: string;
+  value_date: string;
+  unit_value: number | null;
+  total_value: number;
+}
+
+export interface AssetSummaryRow {
+  id: string;
+  name: string;
+  asset_type: string;
+  quantity: number | null;
+  currency: string;
+  current_value: number;
+  value_date: string;
+  change_amount: number;
+  change_pct: number;
+}
+
+export interface AssetsSummary {
+  total_value: number;
+  breakdown: { asset_type: string; total: number }[];
+  assets: AssetSummaryRow[];
+  trend: { date: string; total_value: number }[];
+}
+
 export interface DashboardSummaryResponse {
   summary: MonthlySummary;
   budget_alerts: BudgetStatus[];
+  income_tracker: IncomeSummary;
+  assets: AssetsSummary;
 }
 
 export interface DashboardInsightsResponse {

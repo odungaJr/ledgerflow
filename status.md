@@ -1,5 +1,5 @@
 # Personal Fintech — FinTrack
-**Last updated:** 2026-07-27
+**Last updated:** 2026-07-28
 
 ---
 
@@ -7,9 +7,17 @@
 In Progress
 
 ## What I'm Working On
-Backend is hardened and tested. Now building out the frontend (Next.js) against the FastAPI API.
+Just shipped an Income tracker and an Assets tracker (with net worth) on top of the existing budgets/transactions/dashboard feature set, plus fixed the Dashboard defaulting to an empty current month.
 
 ## Completed This Week
+- **Diagnosed and fixed the Dashboard showing nothing after a real PDF/CSV import**: `/dashboard/summary` always defaulted to the calendar's *current* month, but imported bank statements are historical — so the dashboard was silently querying a month with zero transactions even though the data was sitting in Postgres (visible on the Transactions page, which isn't month-filtered). Fixed on the frontend: the Dashboard now looks up the most recent transaction's date on load and defaults to that month instead of "today," plus added prev/next month navigation so any period can be reviewed.
+- **Added an Income tracker** (`income_entries` table, `income_engine.py`, `/income` router, `/income` page): manually log expected income, record what's actually received, and see what's pending — one-off or recurring (monthly/weekly). Recurring entries generate their next occurrence lazily on read (no cron/scheduler) via a `series_id`-linked chain. Dashboard gained an "Income tracker" section (expected/received/pending + overdue count).
+- **Added an Assets tracker** (`assets` + `asset_values` tables, `asset_engine.py`, `/assets` router, `/assets` page): track anything owned (shares, bonds, real estate, etc.) with a dated value history per asset rather than just a current number. Net worth, a breakdown by asset type, and a forward-filled combined value trend are computed from that history and shown on both the Assets page and a new Dashboard "Net worth" section (with a small dependency-free inline-SVG sparkline — no charting library was in the project and none was added).
+- Alembic migration `002_income_and_assets` applied against local Postgres; 34 new backend tests (56 → 90 total, all passing).
+- Found and fixed a real bug via live testing (not caught by the test suite until added afterward): deleting the *root* entry of a recurring income series 500'd once occurrences existed, because they still referenced it via the `series_id` foreign key. Deleting a series root now deletes the whole series instead of just the one row.
+- Verified end-to-end in the browser at 375px and 1280px: seeded real historical transactions + income entries + multi-snapshot assets via the API, confirmed the Dashboard correctly surfaced all of it (including the recurrence generation and the net-worth trend), then cleaned the seeded data back out of the local dev database.
+
+## Completed Previously
 - Initialized git and pushed to a private GitHub repo (`odungaJr/ledgerflow`)
 - Fixed a stale Claude model ID (`claude-sonnet-4-6` → `claude-sonnet-5`) in the insights generator
 - Hardened CSV import against partial failures: a per-row SAVEPOINT so a duplicate fingerprint only skips that row, and malformed AI JSON responses no longer crash the whole import

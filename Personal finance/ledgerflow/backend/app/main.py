@@ -13,7 +13,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.database import engine, Base
-from app.routers import accounts, categories, transactions, budgets, dashboard
+from app.routers import accounts, categories, transactions, budgets, dashboard, income, assets
 
 
 @asynccontextmanager
@@ -47,6 +47,8 @@ app.include_router(accounts.router)
 app.include_router(categories.router)
 app.include_router(transactions.router)
 app.include_router(budgets.router)
+app.include_router(income.router)
+app.include_router(assets.router)
 app.include_router(dashboard.router)
 
 

@@ -9,6 +9,8 @@ const LINKS = [
   { href: "/accounts", label: "Accounts" },
   { href: "/transactions", label: "Transactions" },
   { href: "/budgets", label: "Budgets" },
+  { href: "/income", label: "Income" },
+  { href: "/assets", label: "Assets" },
 ];
 
 export default function NavBar() {
