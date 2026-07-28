@@ -2,22 +2,41 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { logout } from "@/lib/api";
 
-const LINKS = [
+const PRIMARY_LINKS = [
   { href: "/", label: "Dashboard" },
   { href: "/accounts", label: "Accounts" },
   { href: "/transactions", label: "Transactions" },
+];
+
+const PLANNING_LINKS = [
   { href: "/budgets", label: "Budgets" },
   { href: "/income", label: "Income" },
   { href: "/assets", label: "Assets" },
 ];
 
+const ALL_LINKS = [...PRIMARY_LINKS, ...PLANNING_LINKS];
+
 export default function NavBar() {
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [planningOpen, setPlanningOpen] = useState(false);
+  const planningRef = useRef<HTMLDivElement>(null);
+
+  const inPlanningSection = PLANNING_LINKS.some((link) => link.href === pathname);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (planningRef.current && !planningRef.current.contains(e.target as Node)) {
+        setPlanningOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   async function handleLogout() {
     setOpen(false);
@@ -33,7 +52,7 @@ export default function NavBar() {
         </Link>
 
         <div className="navLinks">
-          {LINKS.map((link) => (
+          {PRIMARY_LINKS.map((link) => (
             <Link
               key={link.href}
               href={link.href}
@@ -42,6 +61,32 @@ export default function NavBar() {
               {link.label}
             </Link>
           ))}
+
+          <div className="navDropdown" ref={planningRef}>
+            <button
+              type="button"
+              className={inPlanningSection ? "active" : ""}
+              aria-expanded={planningOpen}
+              onClick={() => setPlanningOpen((v) => !v)}
+            >
+              Planning ▾
+            </button>
+            {planningOpen && (
+              <div className="navDropdownMenu">
+                {PLANNING_LINKS.map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    className={pathname === link.href ? "active" : ""}
+                    onClick={() => setPlanningOpen(false)}
+                  >
+                    {link.label}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+
           <button type="button" className="btn btnSecondary btnSmall" onClick={handleLogout}>
             Log out
           </button>
@@ -60,7 +105,7 @@ export default function NavBar() {
 
       {open && (
         <div className="mobileMenu">
-          {LINKS.map((link) => (
+          {ALL_LINKS.map((link) => (
             <Link key={link.href} href={link.href} onClick={() => setOpen(false)}>
               {link.label}
             </Link>

@@ -85,6 +85,7 @@ a {
 
 .navLinks {
   display: none;
+  align-items: center;
   gap: 0.25rem;
 }
 
@@ -98,6 +99,56 @@ a {
 
 .navLinks a.active,
 .navLinks a:hover {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.navDropdown {
+  position: relative;
+}
+
+.navDropdown > button {
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.navDropdown > button.active,
+.navDropdown > button:hover {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.navDropdownMenu {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+  padding: 0.4rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  z-index: 20;
+}
+
+.navDropdownMenu a {
+  padding: 0.5rem 0.6rem;
+  border-radius: 6px;
+  text-decoration: none;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+}
+
+.navDropdownMenu a.active,
+.navDropdownMenu a:hover {
   background: var(--bg);
   color: var(--text);
 }

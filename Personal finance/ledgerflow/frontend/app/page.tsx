@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Sparkline from "@/components/Sparkline";
 import { ApiError, getDashboardInsights, getDashboardSummary, getIncomeEntries, getTransactions } from "@/lib/api";
-import { dateToIso } from "@/lib/date";
+import { dateToIso, todayIso } from "@/lib/date";
 import { formatMoney } from "@/lib/format";
 import type { DashboardSummaryResponse } from "@/lib/types";
 
@@ -27,23 +27,33 @@ export default function DashboardPage() {
   const [insightsError, setInsightsError] = useState<string | null>(null);
   const [insightsLoading, setInsightsLoading] = useState(false);
 
-  // Default to whichever is more recent — the latest bank transaction or the
-  // latest logged income entry — rather than transactions alone. Otherwise,
-  // logging income for the current month while bank statements are older
-  // (or vice versa) silently shows the wrong period's figures with no
-  // indication the two don't match.
+  // Default to the latest bank transaction's month — that's the dominant,
+  // most data-rich section of the dashboard (income/expenses, top
+  // categories, budget alerts all depend on it). Only fall back to income
+  // data when there are no transactions at all yet.
+  //
+  // Deliberately NOT "whichever is more recent, transactions or income":
+  // recurring income entries get auto-generated ahead of when they're due
+  // whenever you preview a future month (e.g. clicking the period arrows
+  // forward on the Income page) — those future-dated rows would otherwise
+  // pull the dashboard's default past every transaction that exists,
+  // landing on a period with no transactions at all. Income candidates are
+  // also capped at today for the same reason.
   useEffect(() => {
     Promise.all([
       getTransactions({ limit: 1 }).catch(() => []),
       getIncomeEntries().catch(() => []),
     ]).then(([txns, income]) => {
-      const dates = [
-        ...txns.map((t) => t.date),
-        ...income.map((i) => i.expected_date),
-      ];
-      const ref = dates.length > 0
-        ? new Date(dates.reduce((latest, d) => (d > latest ? d : latest)))
-        : new Date();
+      let ref: Date;
+      if (txns.length > 0) {
+        ref = new Date(txns[0].date);
+      } else {
+        const today = todayIso();
+        const dueIncomeDates = income.map((i) => i.expected_date).filter((d) => d <= today);
+        ref = dueIncomeDates.length > 0
+          ? new Date(dueIncomeDates.reduce((latest, d) => (d > latest ? d : latest)))
+          : new Date();
+      }
       setYear(ref.getFullYear());
       setMonth(ref.getMonth() + 1);
     });
