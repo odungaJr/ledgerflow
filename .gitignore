@@ -19,3 +19,6 @@ venv/
 
 # Claude Code local settings
 .claude/settings.local.json
+
+# Internal-only notes (not for the repo)
+RECAP.md
