@@ -2,12 +2,9 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { addAssetValue, ApiError, createAsset, deleteAsset, getAssets } from "@/lib/api";
+import { todayIso } from "@/lib/date";
 import { formatDate, formatMoney } from "@/lib/format";
 import type { Asset } from "@/lib/types";
-
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 const ASSET_TYPES: { value: Asset["asset_type"]; label: string }[] = [
   { value: "cash", label: "Cash" },

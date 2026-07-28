@@ -2,12 +2,9 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { ApiError, createBudget, deleteBudget, getBudgets, getCategories, updateBudget } from "@/lib/api";
+import { todayIso } from "@/lib/date";
 import { formatMoney } from "@/lib/format";
 import type { BudgetStatus, Category } from "@/lib/types";
-
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 export default function BudgetsPage() {
   const [budgets, setBudgets] = useState<BudgetStatus[]>([]);

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Sparkline from "@/components/Sparkline";
 import { ApiError, getDashboardInsights, getDashboardSummary, getIncomeEntries, getTransactions } from "@/lib/api";
+import { dateToIso } from "@/lib/date";
 import { formatMoney } from "@/lib/format";
 import type { DashboardSummaryResponse } from "@/lib/types";
 
@@ -104,7 +105,7 @@ export default function DashboardPage() {
   function categoryDrilldownUrl(categoryName: string): string | null {
     if (year == null || month == null) return null;
     const from = `${year}-${String(month).padStart(2, "0")}-01`;
-    const to = new Date(year, month, 0).toISOString().slice(0, 10);
+    const to = dateToIso(new Date(year, month, 0));
     const qs = new URLSearchParams({ category: categoryName, from_date: from, to_date: to });
     return `/transactions?${qs.toString()}`;
   }

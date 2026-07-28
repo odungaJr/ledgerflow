@@ -131,5 +131,12 @@ def get_income_summary(db: Session, year: int, month: int) -> dict:
 
 
 def get_income_summary_all_time(db: Session) -> dict:
-    """Lifetime expected/received/pending totals across every income entry logged so far."""
-    return _summarise(list_entries(db))
+    """
+    Lifetime expected/received/pending totals "to date" — entries whose
+    expected_date has actually arrived. Excludes not-yet-due future
+    occurrences (e.g. previewed by navigating a recurring series' period
+    forward), which would otherwise inflate "expected to date" with income
+    that hasn't come due yet.
+    """
+    entries = [e for e in list_entries(db) if e.expected_date <= date.today()]
+    return _summarise(entries)

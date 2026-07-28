@@ -1,5 +1,5 @@
 import uuid
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from app.models.models import IncomeEntry, RecurrencePeriod
@@ -154,3 +154,27 @@ def test_get_income_summary_all_time_spans_every_period(db_session):
     assert summary["total_pending"] == 400_000
     assert summary["overdue_count"] == 1
     assert summary["pending_count"] == 2  # e2 (partial) + e3 (overdue)
+
+
+def test_get_income_summary_all_time_excludes_not_yet_due_entries(db_session):
+    """
+    Regression test: navigating a recurring series' period forward (e.g. to
+    preview next month) generates that future occurrence in the DB via
+    ensure_recurring_occurrences — it must not then get counted as "expected
+    to date" before it's actually due.
+    """
+    due = IncomeEntry(
+        id=uuid.uuid4(), source="Salary this month", expected_amount=2_000_000,
+        expected_date=date.today(), received_amount=2_000_000, received_date=date.today(),
+    )
+    not_yet_due = IncomeEntry(
+        id=uuid.uuid4(), source="Salary next month", expected_amount=2_000_000,
+        expected_date=date.today() + timedelta(days=30), received_amount=0,
+    )
+    db_session.add_all([due, not_yet_due])
+    db_session.commit()
+
+    summary = get_income_summary_all_time(db_session)
+    assert summary["total_expected"] == 2_000_000
+    assert summary["total_received"] == 2_000_000
+    assert summary["total_pending"] == 0

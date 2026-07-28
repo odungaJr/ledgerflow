@@ -11,12 +11,9 @@ import {
   getIncomeSummaryAllTime,
   patchIncomeEntry,
 } from "@/lib/api";
+import { todayIso } from "@/lib/date";
 import { formatDate, formatMoney } from "@/lib/format";
 import type { Category, IncomeEntry, IncomeSummary } from "@/lib/types";
-
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 const STATUS_BADGE: Record<IncomeEntry["status"], string> = {
   received: "ok",
