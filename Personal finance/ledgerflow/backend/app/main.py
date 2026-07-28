@@ -9,11 +9,12 @@ Run with:
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.core.auth import get_current_user
 from app.core.database import engine, Base
-from app.routers import accounts, categories, transactions, budgets, dashboard, income, assets
+from app.routers import accounts, auth, categories, transactions, budgets, dashboard, income, assets
 
 
 @asynccontextmanager
@@ -43,13 +44,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(accounts.router)
-app.include_router(categories.router)
-app.include_router(transactions.router)
-app.include_router(budgets.router)
-app.include_router(income.router)
-app.include_router(assets.router)
-app.include_router(dashboard.router)
+_require_auth = [Depends(get_current_user)]
+
+app.include_router(auth.router)
+app.include_router(accounts.router, dependencies=_require_auth)
+app.include_router(categories.router, dependencies=_require_auth)
+app.include_router(transactions.router, dependencies=_require_auth)
+app.include_router(budgets.router, dependencies=_require_auth)
+app.include_router(income.router, dependencies=_require_auth)
+app.include_router(assets.router, dependencies=_require_auth)
+app.include_router(dashboard.router, dependencies=_require_auth)
 
 
 @app.get("/", tags=["Health"])

@@ -2,6 +2,8 @@
 Core ORM models for LedgerFlow.
 
 Tables:
+  users          – app-level login accounts
+  sessions       – active login sessions (opaque token, hashed at rest)
   accounts       – bank accounts the user tracks
   categories     – spending/income categories (seeded + user-defined)
   transactions   – individual financial transactions
@@ -48,6 +50,31 @@ class AssetType(str, enum.Enum):
     real_estate = "real_estate"
     vehicle     = "vehicle"
     other       = "other"
+
+
+# ── Auth ───────────────────────────────────────────────────────────────────────
+
+class User(Base):
+    __tablename__ = "users"
+
+    id            = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    username      = Column(String(80), nullable=False, unique=True)
+    password_hash = Column(String(120), nullable=False)
+    created_at    = Column(DateTime(timezone=True), server_default=func.now())
+
+    sessions = relationship("Session", back_populates="user", cascade="all, delete-orphan")
+
+
+class Session(Base):
+    __tablename__ = "sessions"
+
+    id         = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id    = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    token_hash = Column(String(64), nullable=False, unique=True)   # sha256 hex digest
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+
+    user = relationship("User", back_populates="sessions")
 
 
 # ── Accounts ───────────────────────────────────────────────────────────────────

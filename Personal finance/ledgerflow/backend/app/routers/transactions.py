@@ -53,6 +53,11 @@ class TransactionPatch(BaseModel):
     is_confirmed:  Optional[bool] = None
 
 
+class TransactionBulkPatch(BaseModel):
+    transaction_ids: list[str]
+    category_name:   str
+
+
 # ── Import helpers ─────────────────────────────────────────────────────────────
 
 def _persist_transactions(raw_rows: list[dict], db: Session) -> tuple[int, int]:
@@ -231,6 +236,22 @@ def list_transactions(
         )
         for t in txns
     ]
+
+
+@router.patch("/bulk", summary="Apply a category to multiple transactions at once")
+def bulk_patch_transactions(body: TransactionBulkPatch, db: Session = Depends(get_db)):
+    cat = db.query(Category).filter(Category.name == body.category_name).first()
+    if not cat:
+        raise HTTPException(status_code=404, detail=f"Category '{body.category_name}' not found")
+
+    ids = [uuid.UUID(tid) for tid in body.transaction_ids]
+    updated = (
+        db.query(Transaction)
+        .filter(Transaction.id.in_(ids))
+        .update({"category_id": cat.id, "is_confirmed": True}, synchronize_session=False)
+    )
+    db.commit()
+    return {"updated": updated}
 
 
 @router.patch("/{txn_id}", summary="Confirm or update a transaction's category")

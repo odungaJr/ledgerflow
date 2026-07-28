@@ -1,8 +1,10 @@
 "use client";
 
 import { ChangeEvent, FormEvent, useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   ApiError,
+  bulkPatchTransactions,
   deleteTransaction,
   getAccounts,
   getCategories,
@@ -16,6 +18,8 @@ import type { Account, Category, ImportResult, Transaction } from "@/lib/types";
 const PAGE_SIZE = 50;
 
 export default function TransactionsPage() {
+  const searchParams = useSearchParams();
+
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -24,12 +28,16 @@ export default function TransactionsPage() {
   const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [accountFilter, setAccountFilter] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("");
-  const [typeFilter, setTypeFilter] = useState("");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
-  const [search, setSearch] = useState("");
+  const [accountFilter, setAccountFilter] = useState(() => searchParams.get("account_id") ?? "");
+  const [categoryFilter, setCategoryFilter] = useState(() => searchParams.get("category") ?? "");
+  const [typeFilter, setTypeFilter] = useState(() => searchParams.get("type") ?? "");
+  const [fromDate, setFromDate] = useState(() => searchParams.get("from_date") ?? "");
+  const [toDate, setToDate] = useState(() => searchParams.get("to_date") ?? "");
+  const [search, setSearch] = useState(() => searchParams.get("search") ?? "");
+
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkCategory, setBulkCategory] = useState("");
+  const [bulkApplying, setBulkApplying] = useState(false);
 
   const [importAccountId, setImportAccountId] = useState("");
   const [importFile, setImportFile] = useState<File | null>(null);
@@ -60,6 +68,7 @@ export default function TransactionsPage() {
 
   useEffect(() => {
     loadTransactions();
+    setSelectedIds(new Set());
   }, [loadTransactions]);
 
   useEffect(() => {
@@ -137,6 +146,36 @@ export default function TransactionsPage() {
     if (!confirm(`Delete transaction "${txn.description}"?`)) return;
     await deleteTransaction(txn.id);
     loadTransactions();
+  }
+
+  function toggleSelected(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    setSelectedIds((prev) =>
+      prev.size === transactions.length ? new Set() : new Set(transactions.map((t) => t.id))
+    );
+  }
+
+  async function handleBulkApply() {
+    if (!bulkCategory || selectedIds.size === 0) return;
+    setBulkApplying(true);
+    try {
+      await bulkPatchTransactions(Array.from(selectedIds), bulkCategory);
+      setSelectedIds(new Set());
+      setBulkCategory("");
+      loadTransactions();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Failed to apply category to selected transactions");
+    } finally {
+      setBulkApplying(false);
+    }
   }
 
   function clearFilters() {
@@ -297,10 +336,46 @@ export default function TransactionsPage() {
           )}
           {!loading && transactions.length > 0 && (
             <>
+              {selectedIds.size > 0 && (
+                <div
+                  className="card"
+                  style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexWrap: "wrap", marginBottom: "0.75rem" }}
+                >
+                  <span>{selectedIds.size} selected</span>
+                  <select value={bulkCategory} onChange={(e) => setBulkCategory(e.target.value)} style={{ maxWidth: "220px" }}>
+                    <option value="" disabled>
+                      Set category…
+                    </option>
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.name}>
+                        {c.icon} {c.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    className="btn btnSmall"
+                    onClick={handleBulkApply}
+                    disabled={!bulkCategory || bulkApplying}
+                  >
+                    {bulkApplying ? "Applying…" : `Apply to ${selectedIds.size} selected`}
+                  </button>
+                  <button className="btn btnSecondary btnSmall" onClick={() => setSelectedIds(new Set())}>
+                    Clear selection
+                  </button>
+                </div>
+              )}
               <div className="tableWrap">
                 <table>
                   <thead>
                     <tr>
+                      <th>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.size === transactions.length}
+                          onChange={toggleSelectAll}
+                          aria-label="Select all"
+                        />
+                      </th>
                       <th>Date</th>
                       <th>Description</th>
                       <th>Amount</th>
@@ -313,6 +388,14 @@ export default function TransactionsPage() {
                   <tbody>
                     {transactions.map((txn) => (
                       <tr key={txn.id}>
+                        <td data-label="Select">
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(txn.id)}
+                            onChange={() => toggleSelected(txn.id)}
+                            aria-label={`Select ${txn.description}`}
+                          />
+                        </td>
                         <td data-label="Date">{formatDate(txn.date)}</td>
                         <td data-label="Description">{txn.description}</td>
                         <td data-label="Amount">

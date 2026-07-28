@@ -4,6 +4,7 @@ Income router
 Endpoints:
   POST   /income          – create an expected-income entry (optionally recurring)
   GET    /income           – list income entries (optionally filtered by period)
+  GET    /income/summary   – expected/received/pending totals for a period
   PATCH  /income/{id}      – record a received amount / edit an entry
   DELETE /income/{id}      – remove a single occurrence
 """
@@ -17,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.models.models import Category, IncomeEntry, RecurrencePeriod
-from app.services.income_engine import entry_status, list_entries
+from app.services.income_engine import entry_status, get_income_summary, list_entries
 
 router = APIRouter(prefix="/income", tags=["Income"])
 
@@ -104,6 +105,15 @@ def get_income_entries(
 ):
     entries = list_entries(db, year, month)
     return [_serialise(e) for e in entries]
+
+
+@router.get("/summary", summary="Expected/received/pending totals for a period")
+def income_summary(
+    year:  int = Query(default=date.today().year),
+    month: int = Query(default=date.today().month),
+    db:    Session = Depends(get_db),
+):
+    return get_income_summary(db, year, month)
 
 
 @router.patch("/{entry_id}", summary="Record a received amount or edit an entry")

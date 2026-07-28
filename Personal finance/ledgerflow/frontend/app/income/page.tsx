@@ -7,10 +7,11 @@ import {
   deleteIncomeEntry,
   getCategories,
   getIncomeEntries,
+  getIncomeSummary,
   patchIncomeEntry,
 } from "@/lib/api";
 import { formatDate, formatMoney } from "@/lib/format";
-import type { Category, IncomeEntry } from "@/lib/types";
+import type { Category, IncomeEntry, IncomeSummary } from "@/lib/types";
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -36,6 +37,7 @@ export default function IncomePage() {
   const [month, setMonth] = useState(today.getMonth() + 1);
 
   const [entries, setEntries] = useState<IncomeEntry[]>([]);
+  const [summary, setSummary] = useState<IncomeSummary | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -62,6 +64,7 @@ export default function IncomePage() {
       })
       .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load income entries"))
       .finally(() => setLoading(false));
+    getIncomeSummary(year, month).then(setSummary).catch(() => {});
   }
 
   useEffect(() => {
@@ -160,6 +163,30 @@ export default function IncomePage() {
             </button>
           </div>
         </div>
+
+        {summary && (
+          <div className="grid spacer">
+            <div className="card">
+              <p className="statLabel">Expected</p>
+              <p className="statValue">{formatMoney(summary.total_expected)}</p>
+            </div>
+            <div className="card">
+              <p className="statLabel">Received</p>
+              <p className="statValue positive">{formatMoney(summary.total_received)}</p>
+            </div>
+            <div className="card">
+              <p className="statLabel">Pending</p>
+              <p className={`statValue ${summary.total_pending > 0 ? "negative" : "positive"}`}>
+                {formatMoney(summary.total_pending)}
+              </p>
+              {summary.overdue_count > 0 && (
+                <span className="badge danger" style={{ marginTop: "0.5rem", display: "inline-block" }}>
+                  {summary.overdue_count} overdue
+                </span>
+              )}
+            </div>
+          </div>
+        )}
 
         <form className="form" onSubmit={handleCreate}>
           <h2 className="sectionTitle">Add expected income</h2>

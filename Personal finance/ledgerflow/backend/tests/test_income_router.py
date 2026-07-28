@@ -62,6 +62,21 @@ def test_list_income_entries_generates_recurring_occurrences(client):
     assert body[0]["expected_date"] == "2026-03-15"
 
 
+def test_income_summary_endpoint_matches_get_income_summary(client):
+    client.post("/income", json={
+        "source": "Salary",
+        "expected_amount": 500_000,
+        "expected_date": "2026-05-05",
+    })
+
+    resp = client.get("/income/summary", params={"year": 2026, "month": 5})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total_expected"] == 500_000
+    assert body["total_received"] == 0
+    assert body["total_pending"] == 500_000
+
+
 def test_patch_income_entry_records_received_amount(client):
     created = client.post("/income", json={
         "source": "Freelance",

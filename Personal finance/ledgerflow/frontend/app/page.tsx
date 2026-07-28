@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import Sparkline from "@/components/Sparkline";
-import { ApiError, getDashboardInsights, getDashboardSummary, getTransactions } from "@/lib/api";
+import { ApiError, getDashboardInsights, getDashboardSummary, getIncomeEntries, getTransactions } from "@/lib/api";
 import { formatMoney } from "@/lib/format";
 import type { DashboardSummaryResponse } from "@/lib/types";
 
@@ -13,6 +14,7 @@ function formatAssetType(assetType: string): string {
 }
 
 export default function DashboardPage() {
+  const router = useRouter();
   const [year, setYear] = useState<number | null>(null);
   const [month, setMonth] = useState<number | null>(null);
 
@@ -24,21 +26,26 @@ export default function DashboardPage() {
   const [insightsError, setInsightsError] = useState<string | null>(null);
   const [insightsLoading, setInsightsLoading] = useState(false);
 
-  // Default to the most recent month that actually has transaction data,
-  // rather than always the calendar's current month — historical bank
-  // imports otherwise land in a month the Dashboard never looks at.
+  // Default to whichever is more recent — the latest bank transaction or the
+  // latest logged income entry — rather than transactions alone. Otherwise,
+  // logging income for the current month while bank statements are older
+  // (or vice versa) silently shows the wrong period's figures with no
+  // indication the two don't match.
   useEffect(() => {
-    getTransactions({ limit: 1 })
-      .then((txns) => {
-        const ref = txns.length > 0 ? new Date(txns[0].date) : new Date();
-        setYear(ref.getFullYear());
-        setMonth(ref.getMonth() + 1);
-      })
-      .catch(() => {
-        const today = new Date();
-        setYear(today.getFullYear());
-        setMonth(today.getMonth() + 1);
-      });
+    Promise.all([
+      getTransactions({ limit: 1 }).catch(() => []),
+      getIncomeEntries().catch(() => []),
+    ]).then(([txns, income]) => {
+      const dates = [
+        ...txns.map((t) => t.date),
+        ...income.map((i) => i.expected_date),
+      ];
+      const ref = dates.length > 0
+        ? new Date(dates.reduce((latest, d) => (d > latest ? d : latest)))
+        : new Date();
+      setYear(ref.getFullYear());
+      setMonth(ref.getMonth() + 1);
+    });
   }, []);
 
   useEffect(() => {
@@ -94,6 +101,14 @@ export default function DashboardPage() {
       ? new Date(year, month - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" })
       : "";
 
+  function categoryDrilldownUrl(categoryName: string): string | null {
+    if (year == null || month == null) return null;
+    const from = `${year}-${String(month).padStart(2, "0")}-01`;
+    const to = new Date(year, month, 0).toISOString().slice(0, 10);
+    const qs = new URLSearchParams({ category: categoryName, from_date: from, to_date: to });
+    return `/transactions?${qs.toString()}`;
+  }
+
   return (
     <main className="page">
       <div className="container">
@@ -140,25 +155,33 @@ export default function DashboardPage() {
               <div className="spacer">
                 <h2 className="sectionTitle">Budget alerts</h2>
                 <div className="grid">
-                  {data.budget_alerts.map((b) => (
-                    <div className="card" key={b.budget_id}>
-                      <p className="statLabel">{b.category_name}</p>
-                      <span className={`badge ${b.is_breached ? "danger" : "warning"}`}>
-                        {b.is_breached ? "Over budget" : "Near limit"}
-                      </span>
-                      <div className="spacer" style={{ marginTop: "0.6rem" }}>
-                        <div className="progress">
-                          <div
-                            className={`progressFill ${b.is_breached ? "danger" : "warning"}`}
-                            style={{ width: `${Math.min(b.pct_used * 100, 100)}%` }}
-                          />
+                  {data.budget_alerts.map((b) => {
+                    const url = categoryDrilldownUrl(b.category_name);
+                    return (
+                      <Link
+                        href={url ?? "/transactions"}
+                        className="card"
+                        key={b.budget_id}
+                        style={{ display: "block", textDecoration: "none", color: "inherit" }}
+                      >
+                        <p className="statLabel">{b.category_name}</p>
+                        <span className={`badge ${b.is_breached ? "danger" : "warning"}`}>
+                          {b.is_breached ? "Over budget" : "Near limit"}
+                        </span>
+                        <div className="spacer" style={{ marginTop: "0.6rem" }}>
+                          <div className="progress">
+                            <div
+                              className={`progressFill ${b.is_breached ? "danger" : "warning"}`}
+                              style={{ width: `${Math.min(b.pct_used * 100, 100)}%` }}
+                            />
+                          </div>
                         </div>
-                      </div>
-                      <p style={{ marginTop: "0.5rem", fontSize: "0.85rem", color: "var(--text-muted)" }}>
-                        {formatMoney(b.spent, currency)} of {formatMoney(b.limit, currency)}
-                      </p>
-                    </div>
-                  ))}
+                        <p style={{ marginTop: "0.5rem", fontSize: "0.85rem", color: "var(--text-muted)" }}>
+                          {formatMoney(b.spent, currency)} of {formatMoney(b.limit, currency)}
+                        </p>
+                      </Link>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -179,7 +202,14 @@ export default function DashboardPage() {
                     </thead>
                     <tbody>
                       {data.summary.top_categories.map((c) => (
-                        <tr key={c.name}>
+                        <tr
+                          key={c.name}
+                          onClick={() => {
+                            const url = categoryDrilldownUrl(c.name);
+                            if (url) router.push(url);
+                          }}
+                          style={{ cursor: "pointer" }}
+                        >
                           <td data-label="Category">{c.name}</td>
                           <td data-label="Spent">{formatMoney(c.total, currency)}</td>
                           <td data-label="Budget">
@@ -212,9 +242,9 @@ export default function DashboardPage() {
                     {formatMoney(data.income_tracker.total_pending, currency)}
                   </p>
                   {data.income_tracker.overdue_count > 0 && (
-                    <span className="badge danger" style={{ marginTop: "0.5rem", display: "inline-block" }}>
-                      {data.income_tracker.overdue_count} overdue
-                    </span>
+                    <Link href="/income" style={{ marginTop: "0.5rem", display: "inline-block" }}>
+                      <span className="badge danger">{data.income_tracker.overdue_count} overdue</span>
+                    </Link>
                   )}
                 </div>
               </div>
@@ -243,7 +273,7 @@ export default function DashboardPage() {
                     </thead>
                     <tbody>
                       {data.assets.breakdown.map((row) => (
-                        <tr key={row.asset_type}>
+                        <tr key={row.asset_type} onClick={() => router.push("/assets")} style={{ cursor: "pointer" }}>
                           <td data-label="Type">{formatAssetType(row.asset_type)}</td>
                           <td data-label="Value">{formatMoney(row.total)}</td>
                         </tr>

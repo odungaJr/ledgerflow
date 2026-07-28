@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
+import { logout } from "@/lib/api";
 
 const LINKS = [
   { href: "/", label: "Dashboard" },
@@ -15,7 +16,14 @@ const LINKS = [
 
 export default function NavBar() {
   const pathname = usePathname();
+  const router = useRouter();
   const [open, setOpen] = useState(false);
+
+  async function handleLogout() {
+    setOpen(false);
+    await logout().catch(() => {});
+    router.replace("/login");
+  }
 
   return (
     <nav className="nav">
@@ -34,6 +42,9 @@ export default function NavBar() {
               {link.label}
             </Link>
           ))}
+          <button type="button" className="btn btnSecondary btnSmall" onClick={handleLogout}>
+            Log out
+          </button>
         </div>
 
         <button
@@ -54,6 +65,9 @@ export default function NavBar() {
               {link.label}
             </Link>
           ))}
+          <button type="button" className="btn btnSecondary btnSmall" onClick={handleLogout}>
+            Log out
+          </button>
         </div>
       )}
     </nav>

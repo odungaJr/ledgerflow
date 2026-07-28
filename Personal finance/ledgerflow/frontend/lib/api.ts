@@ -9,6 +9,7 @@ import type {
   DashboardSummaryResponse,
   ImportResult,
   IncomeEntry,
+  IncomeSummary,
   Transaction,
 } from "./types";
 
@@ -36,6 +37,7 @@ async function extractErrorDetail(res: Response): Promise<string> {
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     headers: { "Content-Type": "application/json", ...(options?.headers || {}) },
+    credentials: "include",
     ...options,
   });
   if (!res.ok) {
@@ -44,6 +46,26 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }
+
+// ── Auth ─────────────────────────────────────────────────────────────────────
+
+export const getAuthStatus = () => request<{ initialized: boolean }>("/auth/status");
+
+export const register = (username: string, password: string) =>
+  request<{ username: string }>("/auth/register", {
+    method: "POST",
+    body: JSON.stringify({ username, password }),
+  });
+
+export const login = (username: string, password: string) =>
+  request<{ username: string }>("/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ username, password }),
+  });
+
+export const logout = () => request<{ status: string }>("/auth/logout", { method: "POST" });
+
+export const getMe = () => request<{ username: string }>("/auth/me");
 
 // ── Accounts ─────────────────────────────────────────────────────────────────
 
@@ -98,6 +120,12 @@ export const patchTransaction = (
   body: JSON.stringify(data),
 });
 
+export const bulkPatchTransactions = (transactionIds: string[], categoryName: string) =>
+  request<{ updated: number }>("/transactions/bulk", {
+    method: "PATCH",
+    body: JSON.stringify({ transaction_ids: transactionIds, category_name: categoryName }),
+  });
+
 export const deleteTransaction = (id: string) =>
   request<{ status: string; id: string }>(`/transactions/${id}`, { method: "DELETE" });
 
@@ -114,6 +142,7 @@ export async function importStatement(
   const res = await fetch(`${API_URL}/transactions/import/${fileType}`, {
     method: "POST",
     body: form,
+    credentials: "include",
   });
   if (!res.ok) {
     throw new ApiError(res.status, await extractErrorDetail(res));
@@ -153,6 +182,14 @@ export const getIncomeEntries = (year?: number, month?: number) => {
   if (month) qs.set("month", String(month));
   const query = qs.toString();
   return request<IncomeEntry[]>(`/income${query ? `?${query}` : ""}`);
+};
+
+export const getIncomeSummary = (year?: number, month?: number) => {
+  const qs = new URLSearchParams();
+  if (year) qs.set("year", String(year));
+  if (month) qs.set("month", String(month));
+  const query = qs.toString();
+  return request<IncomeSummary>(`/income/summary${query ? `?${query}` : ""}`);
 };
 
 export const createIncomeEntry = (data: {
