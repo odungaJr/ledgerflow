@@ -192,6 +192,8 @@ export const getIncomeSummary = (year?: number, month?: number) => {
   return request<IncomeSummary>(`/income/summary${query ? `?${query}` : ""}`);
 };
 
+export const getIncomeSummaryAllTime = () => request<IncomeSummary>("/income/summary/all-time");
+
 export const createIncomeEntry = (data: {
   source: string;
   expected_amount: number;

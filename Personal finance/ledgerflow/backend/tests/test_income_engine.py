@@ -8,6 +8,7 @@ from app.services.income_engine import (
     ensure_recurring_occurrences,
     entry_status,
     get_income_summary,
+    get_income_summary_all_time,
 )
 
 
@@ -127,4 +128,29 @@ def test_get_income_summary_aggregates_period(db_session):
     assert summary["total_expected"] == 600_000
     assert summary["total_received"] == 540_000
     assert summary["total_pending"] == 60_000
-    assert summary["pending_count"] == 1
+
+
+# ── get_income_summary_all_time ──────────────────────────────────────────────
+
+def test_get_income_summary_all_time_spans_every_period(db_session):
+    e1 = IncomeEntry(
+        id=uuid.uuid4(), source="Salary Jan", expected_amount=500_000,
+        expected_date=date(2026, 1, 5), received_amount=500_000, received_date=date(2026, 1, 5),
+    )
+    e2 = IncomeEntry(
+        id=uuid.uuid4(), source="Salary Mar", expected_amount=500_000,
+        expected_date=date(2026, 3, 5), received_amount=300_000,
+    )
+    e3 = IncomeEntry(
+        id=uuid.uuid4(), source="Freelance", expected_amount=200_000,
+        expected_date=date(2020, 6, 1), received_amount=0,
+    )
+    db_session.add_all([e1, e2, e3])
+    db_session.commit()
+
+    summary = get_income_summary_all_time(db_session)
+    assert summary["total_expected"] == 1_200_000
+    assert summary["total_received"] == 800_000
+    assert summary["total_pending"] == 400_000
+    assert summary["overdue_count"] == 1
+    assert summary["pending_count"] == 2  # e2 (partial) + e3 (overdue)

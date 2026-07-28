@@ -248,6 +248,30 @@ export default function DashboardPage() {
                   )}
                 </div>
               </div>
+
+              <p className="statLabel" style={{ marginTop: "1rem" }}>
+                All-time
+              </p>
+              <div className="grid" style={{ marginTop: "0.4rem" }}>
+                <div className="card">
+                  <p className="statLabel">Received to date</p>
+                  <p className="statValue positive">
+                    {formatMoney(data.income_all_time.total_received, currency)}
+                  </p>
+                </div>
+                <div className="card">
+                  <p className="statLabel">Pending to date</p>
+                  <p className={`statValue ${data.income_all_time.total_pending > 0 ? "negative" : "positive"}`}>
+                    {formatMoney(data.income_all_time.total_pending, currency)}
+                  </p>
+                  {data.income_all_time.overdue_count > 0 && (
+                    <Link href="/income" style={{ marginTop: "0.5rem", display: "inline-block" }}>
+                      <span className="badge danger">{data.income_all_time.overdue_count} overdue</span>
+                    </Link>
+                  )}
+                </div>
+              </div>
+
               <p style={{ marginTop: "0.6rem", fontSize: "0.85rem" }}>
                 <Link href="/income">Manage income entries →</Link>
               </p>

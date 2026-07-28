@@ -77,6 +77,27 @@ def test_income_summary_endpoint_matches_get_income_summary(client):
     assert body["total_pending"] == 500_000
 
 
+def test_income_summary_all_time_spans_periods(client):
+    client.post("/income", json={
+        "source": "Salary Jan",
+        "expected_amount": 500_000,
+        "expected_date": "2026-01-05",
+    })
+    entry = client.post("/income", json={
+        "source": "Salary Feb",
+        "expected_amount": 500_000,
+        "expected_date": "2026-02-05",
+    }).json()
+    client.patch(f"/income/{entry['id']}", json={"received_amount": 500_000})
+
+    resp = client.get("/income/summary/all-time")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total_expected"] == 1_000_000
+    assert body["total_received"] == 500_000
+    assert body["total_pending"] == 500_000
+
+
 def test_patch_income_entry_records_received_amount(client):
     created = client.post("/income", json={
         "source": "Freelance",

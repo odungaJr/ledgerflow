@@ -2,11 +2,12 @@
 Income router
 =============
 Endpoints:
-  POST   /income          – create an expected-income entry (optionally recurring)
-  GET    /income           – list income entries (optionally filtered by period)
-  GET    /income/summary   – expected/received/pending totals for a period
-  PATCH  /income/{id}      – record a received amount / edit an entry
-  DELETE /income/{id}      – remove a single occurrence
+  POST   /income                    – create an expected-income entry (optionally recurring)
+  GET    /income                     – list income entries (optionally filtered by period)
+  GET    /income/summary             – expected/received/pending totals for a period
+  GET    /income/summary/all-time    – lifetime expected/received/pending totals
+  PATCH  /income/{id}                – record a received amount / edit an entry
+  DELETE /income/{id}                – remove a single occurrence
 """
 import uuid
 from datetime import date
@@ -18,7 +19,12 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.models.models import Category, IncomeEntry, RecurrencePeriod
-from app.services.income_engine import entry_status, get_income_summary, list_entries
+from app.services.income_engine import (
+    entry_status,
+    get_income_summary,
+    get_income_summary_all_time,
+    list_entries,
+)
 
 router = APIRouter(prefix="/income", tags=["Income"])
 
@@ -114,6 +120,11 @@ def income_summary(
     db:    Session = Depends(get_db),
 ):
     return get_income_summary(db, year, month)
+
+
+@router.get("/summary/all-time", summary="Lifetime expected/received/pending totals")
+def income_summary_all_time(db: Session = Depends(get_db)):
+    return get_income_summary_all_time(db)
 
 
 @router.patch("/{entry_id}", summary="Record a received amount or edit an entry")

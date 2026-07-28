@@ -8,6 +8,7 @@ import {
   getCategories,
   getIncomeEntries,
   getIncomeSummary,
+  getIncomeSummaryAllTime,
   patchIncomeEntry,
 } from "@/lib/api";
 import { formatDate, formatMoney } from "@/lib/format";
@@ -38,6 +39,7 @@ export default function IncomePage() {
 
   const [entries, setEntries] = useState<IncomeEntry[]>([]);
   const [summary, setSummary] = useState<IncomeSummary | null>(null);
+  const [allTimeSummary, setAllTimeSummary] = useState<IncomeSummary | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -65,6 +67,7 @@ export default function IncomePage() {
       .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load income entries"))
       .finally(() => setLoading(false));
     getIncomeSummary(year, month).then(setSummary).catch(() => {});
+    getIncomeSummaryAllTime().then(setAllTimeSummary).catch(() => {});
   }
 
   useEffect(() => {
@@ -164,26 +167,56 @@ export default function IncomePage() {
           </div>
         </div>
 
+        {allTimeSummary && (
+          <div className="spacer">
+            <h2 className="sectionTitle">All-time</h2>
+            <div className="grid">
+              <div className="card">
+                <p className="statLabel">Received to date</p>
+                <p className="statValue positive">{formatMoney(allTimeSummary.total_received)}</p>
+              </div>
+              <div className="card">
+                <p className="statLabel">Pending to date</p>
+                <p className={`statValue ${allTimeSummary.total_pending > 0 ? "negative" : "positive"}`}>
+                  {formatMoney(allTimeSummary.total_pending)}
+                </p>
+                {allTimeSummary.overdue_count > 0 && (
+                  <span className="badge danger" style={{ marginTop: "0.5rem", display: "inline-block" }}>
+                    {allTimeSummary.overdue_count} overdue
+                  </span>
+                )}
+              </div>
+              <div className="card">
+                <p className="statLabel">Expected to date</p>
+                <p className="statValue">{formatMoney(allTimeSummary.total_expected)}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {summary && (
-          <div className="grid spacer">
-            <div className="card">
-              <p className="statLabel">Expected</p>
-              <p className="statValue">{formatMoney(summary.total_expected)}</p>
-            </div>
-            <div className="card">
-              <p className="statLabel">Received</p>
-              <p className="statValue positive">{formatMoney(summary.total_received)}</p>
-            </div>
-            <div className="card">
-              <p className="statLabel">Pending</p>
-              <p className={`statValue ${summary.total_pending > 0 ? "negative" : "positive"}`}>
-                {formatMoney(summary.total_pending)}
-              </p>
-              {summary.overdue_count > 0 && (
-                <span className="badge danger" style={{ marginTop: "0.5rem", display: "inline-block" }}>
-                  {summary.overdue_count} overdue
-                </span>
-              )}
+          <div className="spacer">
+            <h2 className="sectionTitle">{periodLabel}</h2>
+            <div className="grid">
+              <div className="card">
+                <p className="statLabel">Expected</p>
+                <p className="statValue">{formatMoney(summary.total_expected)}</p>
+              </div>
+              <div className="card">
+                <p className="statLabel">Received</p>
+                <p className="statValue positive">{formatMoney(summary.total_received)}</p>
+              </div>
+              <div className="card">
+                <p className="statLabel">Pending</p>
+                <p className={`statValue ${summary.total_pending > 0 ? "negative" : "positive"}`}>
+                  {formatMoney(summary.total_pending)}
+                </p>
+                {summary.overdue_count > 0 && (
+                  <span className="badge danger" style={{ marginTop: "0.5rem", display: "inline-block" }}>
+                    {summary.overdue_count} overdue
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         )}

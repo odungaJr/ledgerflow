@@ -123,6 +123,7 @@ export interface DashboardSummaryResponse {
   summary: MonthlySummary;
   budget_alerts: BudgetStatus[];
   income_tracker: IncomeSummary;
+  income_all_time: IncomeSummary;
   assets: AssetsSummary;
 }
 

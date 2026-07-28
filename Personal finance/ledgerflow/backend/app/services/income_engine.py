@@ -110,9 +110,7 @@ def list_entries(db: Session, year: int | None = None, month: int | None = None)
     return q.order_by(IncomeEntry.expected_date).all()
 
 
-def get_income_summary(db: Session, year: int, month: int) -> dict:
-    """Aggregate expected/received/pending income for a given month."""
-    entries = list_entries(db, year, month)
+def _summarise(entries: list[IncomeEntry]) -> dict:
     statuses = [entry_status(e)["status"] for e in entries]
 
     total_expected = sum((e.expected_amount for e in entries), Decimal(0))
@@ -125,3 +123,13 @@ def get_income_summary(db: Session, year: int, month: int) -> dict:
         "pending_count":  sum(1 for s in statuses if s in ("pending", "overdue", "partial")),
         "overdue_count":  statuses.count("overdue"),
     }
+
+
+def get_income_summary(db: Session, year: int, month: int) -> dict:
+    """Aggregate expected/received/pending income for a given month."""
+    return _summarise(list_entries(db, year, month))
+
+
+def get_income_summary_all_time(db: Session) -> dict:
+    """Lifetime expected/received/pending totals across every income entry logged so far."""
+    return _summarise(list_entries(db))

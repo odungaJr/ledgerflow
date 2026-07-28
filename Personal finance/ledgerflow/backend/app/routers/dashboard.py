@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.services.budget_engine import get_budget_status, get_monthly_summary
 from app.services.ai_engine import generate_insights, detect_anomalies
-from app.services.income_engine import get_income_summary
+from app.services.income_engine import get_income_summary, get_income_summary_all_time
 from app.services.asset_engine import get_assets_summary
 from app.models.models import Transaction
 
@@ -33,10 +33,11 @@ def monthly_summary(
     alerts = [b for b in budget_status if b["is_breached"] or b["is_warning"]]
 
     return {
-        "summary":       summary,
-        "budget_alerts": alerts,
-        "income_tracker": get_income_summary(db, year, month),
-        "assets":         get_assets_summary(db),
+        "summary":         summary,
+        "budget_alerts":   alerts,
+        "income_tracker":  get_income_summary(db, year, month),
+        "income_all_time": get_income_summary_all_time(db),
+        "assets":          get_assets_summary(db),
     }
 
 
