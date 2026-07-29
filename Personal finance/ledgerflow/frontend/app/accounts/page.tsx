@@ -2,7 +2,8 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { ApiError, createAccount, deleteAccount, getAccounts, updateAccount } from "@/lib/api";
-import { formatDate } from "@/lib/format";
+import { todayIso } from "@/lib/date";
+import { formatDate, formatMoney } from "@/lib/format";
 import type { Account } from "@/lib/types";
 
 export default function AccountsPage() {
@@ -20,6 +21,10 @@ export default function AccountsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editBank, setEditBank] = useState("");
+
+  const [balanceEditingId, setBalanceEditingId] = useState<string | null>(null);
+  const [balanceAmount, setBalanceAmount] = useState("");
+  const [balanceDate, setBalanceDate] = useState(todayIso());
 
   function load() {
     getAccounts(includeInactive)
@@ -70,6 +75,20 @@ export default function AccountsPage() {
   async function handleDelete(account: Account) {
     if (!confirm(`Delete "${account.name}"? This also deletes all its transactions.`)) return;
     await deleteAccount(account.id);
+    load();
+  }
+
+  function startBalanceEdit(account: Account) {
+    setBalanceEditingId(account.id);
+    setBalanceAmount(account.current_balance != null ? String(account.current_balance) : "");
+    setBalanceDate(todayIso());
+  }
+
+  async function saveBalance(id: string) {
+    const amount = Number(balanceAmount);
+    if (Number.isNaN(amount)) return;
+    await updateAccount(id, { manual_balance: amount, manual_balance_date: balanceDate });
+    setBalanceEditingId(null);
     load();
   }
 
@@ -146,6 +165,7 @@ export default function AccountsPage() {
                     <th>Name</th>
                     <th>Bank</th>
                     <th>Currency</th>
+                    <th>Balance</th>
                     <th>Status</th>
                     <th>Created</th>
                     <th>Actions</th>
@@ -169,6 +189,45 @@ export default function AccountsPage() {
                         )}
                       </td>
                       <td data-label="Currency">{account.currency}</td>
+                      <td data-label="Balance">
+                        {balanceEditingId === account.id ? (
+                          <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={balanceAmount}
+                              onChange={(e) => setBalanceAmount(e.target.value)}
+                              style={{ maxWidth: "140px" }}
+                              placeholder="Amount"
+                            />
+                            <input
+                              type="date"
+                              value={balanceDate}
+                              onChange={(e) => setBalanceDate(e.target.value)}
+                              style={{ maxWidth: "160px" }}
+                            />
+                            <button className="btn btnSmall" onClick={() => saveBalance(account.id)}>
+                              Save
+                            </button>
+                            <button
+                              className="btn btnSecondary btnSmall"
+                              onClick={() => setBalanceEditingId(null)}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : account.current_balance != null ? (
+                          <>
+                            {formatMoney(account.current_balance, account.currency)}
+                            <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                              {account.balance_source === "manual" ? "manual" : "from transactions"}
+                              {account.balance_as_of && `, as of ${formatDate(account.balance_as_of)}`}
+                            </div>
+                          </>
+                        ) : (
+                          <span style={{ color: "var(--text-muted)" }}>—</span>
+                        )}
+                      </td>
                       <td data-label="Status">
                         <span className={`badge ${account.is_active ? "ok" : "neutral"}`}>
                           {account.is_active ? "Active" : "Inactive"}
@@ -196,6 +255,12 @@ export default function AccountsPage() {
                                 onClick={() => startEdit(account)}
                               >
                                 Edit
+                              </button>
+                              <button
+                                className="btn btnSecondary btnSmall"
+                                onClick={() => startBalanceEdit(account)}
+                              >
+                                Set balance
                               </button>
                               <button
                                 className="btn btnSecondary btnSmall"

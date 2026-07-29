@@ -5,6 +5,11 @@ export interface Account {
   currency: string;
   is_active: boolean;
   created_at: string;
+  manual_balance: number | null;
+  manual_balance_date: string | null;
+  current_balance: number | null;
+  balance_as_of: string | null;
+  balance_source: "transaction" | "manual" | null;
 }
 
 export interface Category {

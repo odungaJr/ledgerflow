@@ -67,3 +67,41 @@ def test_delete_account(client):
 def test_delete_account_not_found(client):
     resp = client.delete("/accounts/11111111-1111-1111-1111-111111111111")
     assert resp.status_code == 404
+
+
+def test_new_account_has_no_balance(client):
+    created = client.post("/accounts", json={"name": "Fresh", "bank": "CRDB"}).json()
+    assert created["current_balance"] is None
+    assert created["balance_source"] is None
+
+
+def test_set_manual_balance(client):
+    created = client.post("/accounts", json={"name": "Fresh", "bank": "CRDB"}).json()
+    resp = client.patch(f"/accounts/{created['id']}", json={
+        "manual_balance": 250000, "manual_balance_date": "2026-07-01",
+    })
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["current_balance"] == 250000
+    assert body["balance_source"] == "manual"
+    assert body["balance_as_of"] == "2026-07-01"
+
+
+def test_balance_reflects_latest_transaction_import(client, seed_categories):
+    import io
+    created = client.post("/accounts", json={"name": "Fresh", "bank": "CRDB"}).json()
+    csv_bytes = (
+        b"Date,Description,Debit,Credit,Balance\n"
+        b"01/07/2026,Salary,,500000.00,500000.00\n"
+        b"05/07/2026,Groceries,50000.00,,450000.00\n"
+    )
+    client.post(
+        "/transactions/import/csv",
+        data={"account_id": created["id"], "auto_categorise": "false"},
+        files={"file": ("statement.csv", io.BytesIO(csv_bytes), "text/csv")},
+    )
+    resp = client.get(f"/accounts/{created['id']}")
+    body = resp.json()
+    assert body["current_balance"] == 450000
+    assert body["balance_source"] == "transaction"
+    assert body["balance_as_of"] == "2026-07-05"

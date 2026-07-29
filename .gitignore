@@ -22,3 +22,6 @@ venv/
 
 # Internal-only notes (not for the repo)
 RECAP.md
+
+# Database backups — real financial data, never commit
+backups/

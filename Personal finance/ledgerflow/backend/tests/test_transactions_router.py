@@ -80,3 +80,24 @@ def test_bulk_patch_applies_category_to_all_given_ids(client, seed_categories):
 def test_bulk_patch_unknown_category_404s(client):
     resp = client.patch("/transactions/bulk", json={"transaction_ids": [], "category_name": "Nonexistent"})
     assert resp.status_code == 404
+
+
+def test_delete_all_transactions(client):
+    account_id = _make_account(client)
+    client.post(
+        "/transactions/import/csv",
+        data={"account_id": account_id, "auto_categorise": "false"},
+        files={"file": ("statement.csv", io.BytesIO(CSV_TWO_ROWS), "text/csv")},
+    )
+    assert len(client.get("/transactions").json()) == 2
+
+    resp = client.delete("/transactions/all")
+    assert resp.status_code == 200
+    assert resp.json() == {"deleted": 2}
+    assert client.get("/transactions").json() == []
+
+
+def test_delete_all_transactions_when_none_exist(client):
+    resp = client.delete("/transactions/all")
+    assert resp.status_code == 200
+    assert resp.json() == {"deleted": 0}

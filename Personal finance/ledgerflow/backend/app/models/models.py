@@ -89,6 +89,13 @@ class Account(Base):
     is_active  = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+    # User-entered "known balance as of X" — used when there's no imported
+    # transaction history (or it's stale) to derive a balance from. See
+    # account_engine.compute_balance for how this competes with the latest
+    # transaction's balance_after.
+    manual_balance      = Column(Numeric(18, 2), nullable=True)
+    manual_balance_date = Column(Date, nullable=True)
+
     transactions = relationship("Transaction", back_populates="account", cascade="all, delete-orphan")
 
 

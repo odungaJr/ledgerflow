@@ -7,7 +7,8 @@ Endpoints:
   GET  /transactions              – list transactions (filterable)
   GET  /transactions/{id}         – single transaction detail
   PATCH /transactions/{id}        – confirm/update category
-  DELETE /transactions/{id}       – soft-delete (sets category to None)
+  DELETE /transactions/all        – delete every transaction
+  DELETE /transactions/{id}       – delete a single transaction
 """
 import logging
 import uuid
@@ -279,6 +280,13 @@ def patch_transaction(
     db.commit()
     db.refresh(txn)
     return {"status": "updated", "id": txn_id}
+
+
+@router.delete("/all", summary="Delete every transaction")
+def delete_all_transactions(db: Session = Depends(get_db)):
+    deleted = db.query(Transaction).delete()
+    db.commit()
+    return {"deleted": deleted}
 
 
 @router.delete("/{txn_id}", summary="Remove a transaction")

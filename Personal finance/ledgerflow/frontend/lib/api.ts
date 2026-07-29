@@ -77,7 +77,9 @@ export const createAccount = (data: { name: string; bank: string; currency?: str
 
 export const updateAccount = (
   id: string,
-  data: Partial<Pick<Account, "name" | "bank" | "currency" | "is_active">>
+  data: Partial<
+    Pick<Account, "name" | "bank" | "currency" | "is_active" | "manual_balance" | "manual_balance_date">
+  >
 ) => request<Account>(`/accounts/${id}`, { method: "PATCH", body: JSON.stringify(data) });
 
 export const deleteAccount = (id: string) =>
@@ -128,6 +130,9 @@ export const bulkPatchTransactions = (transactionIds: string[], categoryName: st
 
 export const deleteTransaction = (id: string) =>
   request<{ status: string; id: string }>(`/transactions/${id}`, { method: "DELETE" });
+
+export const deleteAllTransactions = () =>
+  request<{ deleted: number }>("/transactions/all", { method: "DELETE" });
 
 export async function importStatement(
   accountId: string,

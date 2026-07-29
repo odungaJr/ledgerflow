@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import {
   ApiError,
   bulkPatchTransactions,
+  deleteAllTransactions,
   deleteTransaction,
   getAccounts,
   getCategories,
@@ -38,6 +39,7 @@ export default function TransactionsPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkCategory, setBulkCategory] = useState("");
   const [bulkApplying, setBulkApplying] = useState(false);
+  const [clearingAll, setClearingAll] = useState(false);
 
   const [importAccountId, setImportAccountId] = useState("");
   const [importFile, setImportFile] = useState<File | null>(null);
@@ -185,6 +187,22 @@ export default function TransactionsPage() {
     setFromDate("");
     setToDate("");
     setSearch("");
+  }
+
+  async function handleClearAll() {
+    if (!confirm("Delete ALL transactions across every account? This cannot be undone.")) return;
+    if (prompt('Type "DELETE" to confirm permanently clearing all transactions:') !== "DELETE") return;
+    setClearingAll(true);
+    try {
+      const result = await deleteAllTransactions();
+      setSelectedIds(new Set());
+      loadTransactions();
+      alert(`Deleted ${result.deleted} transaction${result.deleted === 1 ? "" : "s"}.`);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Failed to clear transactions");
+    } finally {
+      setClearingAll(false);
+    }
   }
 
   const filtersActive =
@@ -463,6 +481,24 @@ export default function TransactionsPage() {
               )}
             </>
           )}
+        </div>
+
+        <div className="spacer card" style={{ borderColor: "var(--danger)" }}>
+          <p className="statLabel" style={{ color: "var(--danger)" }}>
+            Danger zone
+          </p>
+          <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginTop: "0.3rem" }}>
+            Permanently deletes every transaction across every account. Account balances that
+            depend on transaction history will need to be set manually afterwards.
+          </p>
+          <button
+            className="btn btnDanger btnSmall"
+            style={{ marginTop: "0.6rem" }}
+            onClick={handleClearAll}
+            disabled={clearingAll}
+          >
+            {clearingAll ? "Clearing…" : "Clear all transactions"}
+          </button>
         </div>
       </div>
     </main>
