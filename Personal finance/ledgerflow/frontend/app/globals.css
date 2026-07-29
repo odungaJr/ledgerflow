@@ -29,6 +29,36 @@
   }
 }
 
+/* Explicit theme choice from the Settings page — set as `data-theme` on
+   <html> by ThemeProvider (and by the inline bootstrap script in
+   layout.tsx, to avoid a flash before hydration). Higher specificity than
+   the prefers-color-scheme media query above, so it always wins over the
+   OS preference regardless of source order. Falls back to that media
+   query when no attribute is set (theme = "system"). */
+:root[data-theme="dark"] {
+  --bg: #14161a;
+  --surface: #1c1f26;
+  --text: #e7e9ee;
+  --text-muted: #9aa0ac;
+  --border: #2b2f38;
+  --primary: #3b82f6;
+  --primary-hover: #60a5fa;
+  --warning: #d99b3f;
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --text: #1a1d23;
+  --text-muted: #667085;
+  --border: #e3e5ea;
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --warning: #b45309;
+  color-scheme: light;
+}
+
 * {
   box-sizing: border-box;
 }

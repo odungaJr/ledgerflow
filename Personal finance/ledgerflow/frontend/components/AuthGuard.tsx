@@ -33,6 +33,23 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     };
   }, [pathname, router]);
 
+  // The server enforces the idle session timeout on every request, but an
+  // idle tab makes none — so poll periodically to notice a timed-out
+  // session and bounce to /login promptly instead of only on the next
+  // click.
+  useEffect(() => {
+    if (pathname === "/login" || !authed) return;
+
+    const interval = setInterval(() => {
+      getMe().catch(() => {
+        setAuthed(false);
+        router.replace("/login");
+      });
+    }, 60_000);
+
+    return () => clearInterval(interval);
+  }, [pathname, authed, router]);
+
   if (pathname === "/login") {
     return <>{children}</>;
   }

@@ -73,3 +73,63 @@ def test_protected_route_works_once_logged_in(unauthenticated_client):
     unauthenticated_client.post("/auth/register", json={"username": "moses", "password": "correct-horse"})
     resp = unauthenticated_client.get("/accounts")
     assert resp.status_code == 200
+
+
+def test_repeated_failed_logins_lock_the_account(unauthenticated_client):
+    unauthenticated_client.post("/auth/register", json={"username": "moses", "password": "correct-horse"})
+    unauthenticated_client.post("/auth/logout")
+
+    for _ in range(5):
+        resp = unauthenticated_client.post("/auth/login", json={"username": "moses", "password": "wrong"})
+        assert resp.status_code == 401
+
+    # 6th attempt (even with the correct password) is now locked out.
+    resp = unauthenticated_client.post("/auth/login", json={"username": "moses", "password": "correct-horse"})
+    assert resp.status_code == 423
+
+
+def test_successful_login_resets_the_failed_attempt_counter(unauthenticated_client):
+    unauthenticated_client.post("/auth/register", json={"username": "moses", "password": "correct-horse"})
+    unauthenticated_client.post("/auth/logout")
+
+    for _ in range(3):
+        unauthenticated_client.post("/auth/login", json={"username": "moses", "password": "wrong"})
+
+    resp = unauthenticated_client.post("/auth/login", json={"username": "moses", "password": "correct-horse"})
+    assert resp.status_code == 200
+
+    # Counter reset — three more wrong attempts alone shouldn't lock it.
+    for _ in range(3):
+        resp = unauthenticated_client.post("/auth/login", json={"username": "moses", "password": "wrong"})
+        assert resp.status_code == 401
+
+
+def test_change_password_requires_correct_current_password(unauthenticated_client):
+    unauthenticated_client.post("/auth/register", json={"username": "moses", "password": "correct-horse"})
+    resp = unauthenticated_client.post(
+        "/auth/change-password",
+        json={"current_password": "wrong", "new_password": "new-password-123"},
+    )
+    assert resp.status_code == 401
+
+
+def test_change_password_rejects_short_new_password(unauthenticated_client):
+    unauthenticated_client.post("/auth/register", json={"username": "moses", "password": "correct-horse"})
+    resp = unauthenticated_client.post(
+        "/auth/change-password",
+        json={"current_password": "correct-horse", "new_password": "short"},
+    )
+    assert resp.status_code == 422
+
+
+def test_change_password_succeeds_and_new_password_works(unauthenticated_client):
+    unauthenticated_client.post("/auth/register", json={"username": "moses", "password": "correct-horse"})
+    resp = unauthenticated_client.post(
+        "/auth/change-password",
+        json={"current_password": "correct-horse", "new_password": "new-password-123"},
+    )
+    assert resp.status_code == 200
+
+    unauthenticated_client.post("/auth/logout")
+    resp = unauthenticated_client.post("/auth/login", json={"username": "moses", "password": "new-password-123"})
+    assert resp.status_code == 200

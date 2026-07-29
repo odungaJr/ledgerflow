@@ -16,7 +16,7 @@ import uuid
 from datetime import date, datetime
 from sqlalchemy import (
     Column, String, Numeric, Date, DateTime,
-    Boolean, ForeignKey, Text, Enum as SAEnum
+    Boolean, ForeignKey, Text, Integer, Enum as SAEnum
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -62,6 +62,10 @@ class User(Base):
     password_hash = Column(String(120), nullable=False)
     created_at    = Column(DateTime(timezone=True), server_default=func.now())
 
+    # Login lockout — see core/auth.py for the attempt/lockout thresholds.
+    failed_login_attempts = Column(Integer, nullable=False, default=0, server_default="0")
+    locked_until           = Column(DateTime(timezone=True), nullable=True)
+
     sessions = relationship("Session", back_populates="user", cascade="all, delete-orphan")
 
 
@@ -73,6 +77,10 @@ class Session(Base):
     token_hash = Column(String(64), nullable=False, unique=True)   # sha256 hex digest
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     expires_at = Column(DateTime(timezone=True), nullable=False)
+
+    # Bumped on every authenticated request — used to enforce the idle
+    # timeout independently of the long-lived absolute `expires_at`.
+    last_seen_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     user = relationship("User", back_populates="sessions")
 

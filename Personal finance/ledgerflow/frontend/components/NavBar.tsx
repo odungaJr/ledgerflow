@@ -15,9 +15,12 @@ const PLANNING_LINKS = [
   { href: "/budgets", label: "Budgets" },
   { href: "/income", label: "Income" },
   { href: "/assets", label: "Assets" },
+  { href: "/reports/pnl", label: "P&L Statement" },
 ];
 
-const ALL_LINKS = [...PRIMARY_LINKS, ...PLANNING_LINKS];
+const SETTINGS_LINK = { href: "/settings", label: "Settings" };
+
+const ALL_LINKS = [...PRIMARY_LINKS, ...PLANNING_LINKS, SETTINGS_LINK];
 
 export default function NavBar() {
   const pathname = usePathname();
@@ -86,6 +89,13 @@ export default function NavBar() {
               </div>
             )}
           </div>
+
+          <Link
+            href={SETTINGS_LINK.href}
+            className={pathname === SETTINGS_LINK.href ? "active" : ""}
+          >
+            {SETTINGS_LINK.label}
+          </Link>
 
           <button type="button" className="btn btnSecondary btnSmall" onClick={handleLogout}>
             Log out

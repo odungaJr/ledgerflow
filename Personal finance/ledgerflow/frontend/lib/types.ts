@@ -17,6 +17,7 @@ export interface Category {
   name: string;
   icon: string;
   is_income: boolean;
+  is_system: boolean;
 }
 
 export interface Transaction {
@@ -144,4 +145,21 @@ export interface ImportResult {
   skipped: number;
   total_parsed: number;
   categorised: boolean;
+}
+
+export interface PnlRow {
+  name: string;
+  icon: string;
+  total: number;
+}
+
+export interface PnlStatement {
+  from_date: string;
+  to_date: string;
+  currency: string;
+  income: PnlRow[];
+  expenses: PnlRow[];
+  total_income: number;
+  total_expenses: number;
+  net_income: number;
 }

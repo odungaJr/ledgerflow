@@ -10,6 +10,7 @@ import type {
   ImportResult,
   IncomeEntry,
   IncomeSummary,
+  PnlStatement,
   Transaction,
 } from "./types";
 
@@ -67,6 +68,12 @@ export const logout = () => request<{ status: string }>("/auth/logout", { method
 
 export const getMe = () => request<{ username: string }>("/auth/me");
 
+export const changePassword = (currentPassword: string, newPassword: string) =>
+  request<{ status: string }>("/auth/change-password", {
+    method: "POST",
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  });
+
 // ── Accounts ─────────────────────────────────────────────────────────────────
 
 export const getAccounts = (includeInactive = false) =>
@@ -88,6 +95,15 @@ export const deleteAccount = (id: string) =>
 // ── Categories ───────────────────────────────────────────────────────────────
 
 export const getCategories = () => request<Category[]>("/categories");
+
+export const createCategory = (data: { name: string; icon?: string; is_income?: boolean }) =>
+  request<Category>("/categories", { method: "POST", body: JSON.stringify(data) });
+
+export const updateCategory = (id: string, data: { name?: string; icon?: string }) =>
+  request<Category>(`/categories/${id}`, { method: "PATCH", body: JSON.stringify(data) });
+
+export const deleteCategory = (id: string) =>
+  request<{ status: string; id: string }>(`/categories/${id}`, { method: "DELETE" });
 
 // ── Transactions ─────────────────────────────────────────────────────────────
 
@@ -272,3 +288,8 @@ export const getDashboardInsights = (year?: number, month?: number) => {
   const query = qs.toString();
   return request<DashboardInsightsResponse>(`/dashboard/insights${query ? `?${query}` : ""}`);
 };
+
+// ── Reports ──────────────────────────────────────────────────────────────────
+
+export const getPnl = (fromDate: string, toDate: string) =>
+  request<PnlStatement>(`/reports/pnl?from_date=${fromDate}&to_date=${toDate}`);
