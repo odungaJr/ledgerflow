@@ -12,9 +12,10 @@ from app.services.income_engine import (
 )
 
 
-def _make_template(db_session, expected_date, period=RecurrencePeriod.monthly, amount=500_000):
+def _make_template(db_session, user_id, expected_date, period=RecurrencePeriod.monthly, amount=500_000):
     entry = IncomeEntry(
         id=uuid.uuid4(),
+        user_id=user_id,
         source="Salary",
         expected_amount=amount,
         expected_date=expected_date,
@@ -49,38 +50,47 @@ def test_advance_weekly_adds_seven_days():
 
 # ── ensure_recurring_occurrences ─────────────────────────────────────────────
 
-def test_ensure_recurring_occurrences_fills_missing_months(db_session):
-    _make_template(db_session, date(2026, 1, 15))
+def test_ensure_recurring_occurrences_fills_missing_months(db_session, test_user):
+    _make_template(db_session, test_user.id, date(2026, 1, 15))
 
-    ensure_recurring_occurrences(db_session, date(2026, 4, 30))
+    ensure_recurring_occurrences(db_session, test_user.id, date(2026, 4, 30))
 
     entries = db_session.query(IncomeEntry).order_by(IncomeEntry.expected_date).all()
     dates = [e.expected_date for e in entries]
     assert dates == [date(2026, 1, 15), date(2026, 2, 15), date(2026, 3, 15), date(2026, 4, 15)]
 
 
-def test_ensure_recurring_occurrences_is_idempotent(db_session):
-    _make_template(db_session, date(2026, 1, 15))
+def test_ensure_recurring_occurrences_is_idempotent(db_session, test_user):
+    _make_template(db_session, test_user.id, date(2026, 1, 15))
 
-    ensure_recurring_occurrences(db_session, date(2026, 3, 31))
+    ensure_recurring_occurrences(db_session, test_user.id, date(2026, 3, 31))
     first_count = db_session.query(IncomeEntry).count()
 
-    ensure_recurring_occurrences(db_session, date(2026, 3, 31))
+    ensure_recurring_occurrences(db_session, test_user.id, date(2026, 3, 31))
     second_count = db_session.query(IncomeEntry).count()
 
     assert first_count == second_count == 3
 
 
-def test_ensure_recurring_occurrences_ignores_one_off_entries(db_session):
+def test_ensure_recurring_occurrences_ignores_one_off_entries(db_session, test_user):
     entry = IncomeEntry(
-        id=uuid.uuid4(), source="Freelance", expected_amount=100_000,
+        id=uuid.uuid4(), user_id=test_user.id, source="Freelance", expected_amount=100_000,
         expected_date=date(2026, 1, 1), received_amount=0, is_recurring=False,
     )
     db_session.add(entry)
     db_session.commit()
 
-    ensure_recurring_occurrences(db_session, date(2026, 6, 1))
+    ensure_recurring_occurrences(db_session, test_user.id, date(2026, 6, 1))
 
+    assert db_session.query(IncomeEntry).count() == 1
+
+
+def test_ensure_recurring_occurrences_only_affects_this_user(db_session, test_user, second_user):
+    _make_template(db_session, second_user.id, date(2026, 1, 15))
+
+    ensure_recurring_occurrences(db_session, test_user.id, date(2026, 4, 30))
+
+    # Only the template itself exists — nothing generated for a series that isn't mine.
     assert db_session.query(IncomeEntry).count() == 1
 
 
@@ -112,19 +122,19 @@ def test_entry_status_pending_when_future():
 
 # ── get_income_summary ───────────────────────────────────────────────────────
 
-def test_get_income_summary_aggregates_period(db_session):
+def test_get_income_summary_aggregates_period(db_session, test_user):
     e1 = IncomeEntry(
-        id=uuid.uuid4(), source="Salary", expected_amount=500_000,
+        id=uuid.uuid4(), user_id=test_user.id, source="Salary", expected_amount=500_000,
         expected_date=date(2026, 3, 5), received_amount=500_000, received_date=date(2026, 3, 5),
     )
     e2 = IncomeEntry(
-        id=uuid.uuid4(), source="Side hustle", expected_amount=100_000,
+        id=uuid.uuid4(), user_id=test_user.id, source="Side hustle", expected_amount=100_000,
         expected_date=date(2026, 3, 20), received_amount=40_000,
     )
     db_session.add_all([e1, e2])
     db_session.commit()
 
-    summary = get_income_summary(db_session, 2026, 3)
+    summary = get_income_summary(db_session, test_user.id, 2026, 3)
     assert summary["total_expected"] == 600_000
     assert summary["total_received"] == 540_000
     assert summary["total_pending"] == 60_000
@@ -132,23 +142,23 @@ def test_get_income_summary_aggregates_period(db_session):
 
 # ── get_income_summary_all_time ──────────────────────────────────────────────
 
-def test_get_income_summary_all_time_spans_every_period(db_session):
+def test_get_income_summary_all_time_spans_every_period(db_session, test_user):
     e1 = IncomeEntry(
-        id=uuid.uuid4(), source="Salary Jan", expected_amount=500_000,
+        id=uuid.uuid4(), user_id=test_user.id, source="Salary Jan", expected_amount=500_000,
         expected_date=date(2026, 1, 5), received_amount=500_000, received_date=date(2026, 1, 5),
     )
     e2 = IncomeEntry(
-        id=uuid.uuid4(), source="Salary Mar", expected_amount=500_000,
+        id=uuid.uuid4(), user_id=test_user.id, source="Salary Mar", expected_amount=500_000,
         expected_date=date(2026, 3, 5), received_amount=300_000,
     )
     e3 = IncomeEntry(
-        id=uuid.uuid4(), source="Freelance", expected_amount=200_000,
+        id=uuid.uuid4(), user_id=test_user.id, source="Freelance", expected_amount=200_000,
         expected_date=date(2020, 6, 1), received_amount=0,
     )
     db_session.add_all([e1, e2, e3])
     db_session.commit()
 
-    summary = get_income_summary_all_time(db_session)
+    summary = get_income_summary_all_time(db_session, test_user.id)
     assert summary["total_expected"] == 1_200_000
     assert summary["total_received"] == 800_000
     assert summary["total_pending"] == 400_000
@@ -156,7 +166,7 @@ def test_get_income_summary_all_time_spans_every_period(db_session):
     assert summary["pending_count"] == 2  # e2 (partial) + e3 (overdue)
 
 
-def test_get_income_summary_all_time_excludes_not_yet_due_entries(db_session):
+def test_get_income_summary_all_time_excludes_not_yet_due_entries(db_session, test_user):
     """
     Regression test: navigating a recurring series' period forward (e.g. to
     preview next month) generates that future occurrence in the DB via
@@ -164,17 +174,17 @@ def test_get_income_summary_all_time_excludes_not_yet_due_entries(db_session):
     to date" before it's actually due.
     """
     due = IncomeEntry(
-        id=uuid.uuid4(), source="Salary this month", expected_amount=2_000_000,
+        id=uuid.uuid4(), user_id=test_user.id, source="Salary this month", expected_amount=2_000_000,
         expected_date=date.today(), received_amount=2_000_000, received_date=date.today(),
     )
     not_yet_due = IncomeEntry(
-        id=uuid.uuid4(), source="Salary next month", expected_amount=2_000_000,
+        id=uuid.uuid4(), user_id=test_user.id, source="Salary next month", expected_amount=2_000_000,
         expected_date=date.today() + timedelta(days=30), received_amount=0,
     )
     db_session.add_all([due, not_yet_due])
     db_session.commit()
 
-    summary = get_income_summary_all_time(db_session)
+    summary = get_income_summary_all_time(db_session, test_user.id)
     assert summary["total_expected"] == 2_000_000
     assert summary["total_received"] == 2_000_000
     assert summary["total_pending"] == 0

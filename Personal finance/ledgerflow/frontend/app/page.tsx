@@ -4,12 +4,14 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Sparkline from "@/components/Sparkline";
+import IncomeExpenseChart from "@/components/charts/IncomeExpenseChart";
+import CategoryBarChart from "@/components/charts/CategoryBarChart";
 import { ApiError, getDashboardInsights, getDashboardSummary, getIncomeEntries, getTransactions } from "@/lib/api";
 import { dateToIso, todayIso } from "@/lib/date";
 import { formatMoney } from "@/lib/format";
 import type { DashboardSummaryResponse } from "@/lib/types";
 
-function formatAssetType(assetType: string): string {
+function formatTypeLabel(assetType: string): string {
   const label = assetType.replace(/_/g, " ");
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
@@ -162,6 +164,13 @@ export default function DashboardPage() {
               </div>
             </div>
 
+            <div className="spacer">
+              <h2 className="sectionTitle">Income vs expenses</h2>
+              <div className="card">
+                <IncomeExpenseChart data={data.monthly_trend} currency={currency} />
+              </div>
+            </div>
+
             {data.budget_alerts.length > 0 && (
               <div className="spacer">
                 <h2 className="sectionTitle">Budget alerts</h2>
@@ -199,39 +208,14 @@ export default function DashboardPage() {
 
             <div className="spacer">
               <h2 className="sectionTitle">Top categories</h2>
-              {data.summary.top_categories.length === 0 ? (
-                <div className="empty">No categorised spending yet this period.</div>
-              ) : (
-                <div className="tableWrap">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Category</th>
-                        <th>Spent</th>
-                        <th>Budget</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.summary.top_categories.map((c) => (
-                        <tr
-                          key={c.name}
-                          onClick={() => {
-                            const url = categoryDrilldownUrl(c.name);
-                            if (url) router.push(url);
-                          }}
-                          style={{ cursor: "pointer" }}
-                        >
-                          <td data-label="Category">{c.name}</td>
-                          <td data-label="Spent">{formatMoney(c.total, currency)}</td>
-                          <td data-label="Budget">
-                            {c.budget_limit != null ? formatMoney(c.budget_limit, currency) : "—"}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+              <CategoryBarChart
+                data={data.summary.top_categories}
+                currency={currency}
+                onSelect={(name) => {
+                  const url = categoryDrilldownUrl(name);
+                  if (url) router.push(url);
+                }}
+              />
             </div>
 
             <div className="spacer">
@@ -293,43 +277,92 @@ export default function DashboardPage() {
               <div className="grid">
                 <div className="card">
                   <p className="statLabel">Total assets</p>
-                  <p className="statValue">{formatMoney(data.assets.total_value)}</p>
+                  <p className="statValue positive">{formatMoney(data.assets.total_value)}</p>
+                </div>
+                <div className="card">
+                  <p className="statLabel">Total liabilities</p>
+                  <p className="statValue negative">{formatMoney(data.liabilities.total_value)}</p>
+                </div>
+                <div className="card">
+                  <p className="statLabel">Net worth</p>
+                  <p className={`statValue ${data.net_worth.total >= 0 ? "positive" : "negative"}`}>
+                    {formatMoney(data.net_worth.total)}
+                  </p>
                 </div>
               </div>
 
-              {data.assets.breakdown.length > 0 && (
-                <div className="tableWrap spacer">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Type</th>
-                        <th>Value</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.assets.breakdown.map((row) => (
-                        <tr key={row.asset_type} onClick={() => router.push("/assets")} style={{ cursor: "pointer" }}>
-                          <td data-label="Type">{formatAssetType(row.asset_type)}</td>
-                          <td data-label="Value">{formatMoney(row.total)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+              <div className="card spacer">
+                <p className="statLabel">Net worth trend</p>
+                <Sparkline data={data.net_worth.trend.map((t) => ({ date: t.date, total_value: t.net_worth }))} />
+              </div>
 
-              {data.assets.assets.length === 0 ? (
-                <div className="empty spacer">No assets tracked yet.</div>
-              ) : (
-                <div className="card spacer">
-                  <p className="statLabel">Value trend</p>
-                  <Sparkline data={data.assets.trend} />
+              <div className="grid spacer" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
+                <div>
+                  <p className="statLabel" style={{ marginBottom: "0.5rem" }}>
+                    Assets by type
+                  </p>
+                  {data.assets.breakdown.length > 0 ? (
+                    <div className="tableWrap">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Type</th>
+                            <th>Value</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {data.assets.breakdown.map((row) => (
+                            <tr key={row.asset_type} onClick={() => router.push("/assets")} style={{ cursor: "pointer" }}>
+                              <td data-label="Type">{formatTypeLabel(row.asset_type)}</td>
+                              <td data-label="Value">{formatMoney(row.total)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="empty">No assets tracked yet.</div>
+                  )}
+                  <p style={{ marginTop: "0.6rem", fontSize: "0.85rem" }}>
+                    <Link href="/assets">Manage assets →</Link>
+                  </p>
                 </div>
-              )}
 
-              <p style={{ marginTop: "0.6rem", fontSize: "0.85rem" }}>
-                <Link href="/assets">Manage assets →</Link>
-              </p>
+                <div>
+                  <p className="statLabel" style={{ marginBottom: "0.5rem" }}>
+                    Liabilities by type
+                  </p>
+                  {data.liabilities.breakdown.length > 0 ? (
+                    <div className="tableWrap">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Type</th>
+                            <th>Owed</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {data.liabilities.breakdown.map((row) => (
+                            <tr
+                              key={row.liability_type}
+                              onClick={() => router.push("/liabilities")}
+                              style={{ cursor: "pointer" }}
+                            >
+                              <td data-label="Type">{formatTypeLabel(row.liability_type)}</td>
+                              <td data-label="Owed">{formatMoney(row.total)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="empty">No liabilities tracked yet.</div>
+                  )}
+                  <p style={{ marginTop: "0.6rem", fontSize: "0.85rem" }}>
+                    <Link href="/liabilities">Manage liabilities →</Link>
+                  </p>
+                </div>
+              </div>
             </div>
 
             <div className="spacer">

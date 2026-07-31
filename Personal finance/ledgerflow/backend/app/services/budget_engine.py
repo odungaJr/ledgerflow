@@ -4,6 +4,7 @@ Budget Engine
 Calculates how much of each budget has been spent in the current
 period and whether any limits have been breached or are close (>80%).
 """
+import uuid
 from datetime import date
 from decimal import Decimal
 
@@ -21,9 +22,9 @@ def _period_start(period: BudgetPeriod, ref: date) -> date:
     return ref - __import__("datetime").timedelta(days=ref.weekday())
 
 
-def get_budget_status(db: Session, ref_date: date | None = None) -> list[dict]:
+def get_budget_status(db: Session, user_id: uuid.UUID, ref_date: date | None = None) -> list[dict]:
     """
-    Return a list of budget status objects for all active budgets.
+    Return a list of budget status objects for all of this user's active budgets.
 
     Each object:
       {
@@ -36,7 +37,7 @@ def get_budget_status(db: Session, ref_date: date | None = None) -> list[dict]:
 
     active_budgets = (
         db.query(Budget)
-        .filter(Budget.is_active == True, Budget.start_date <= ref_date)
+        .filter(Budget.user_id == user_id, Budget.is_active == True, Budget.start_date <= ref_date)
         .all()
     )
 
@@ -49,6 +50,7 @@ def get_budget_status(db: Session, ref_date: date | None = None) -> list[dict]:
             db.query(func.sum(Transaction.amount))
             .join(Category, Transaction.category_id == Category.id)
             .filter(
+                Transaction.user_id == user_id,
                 Transaction.category_id == budget.category_id,
                 Transaction.type == "debit",
                 Transaction.date >= period_start,
@@ -76,9 +78,9 @@ def get_budget_status(db: Session, ref_date: date | None = None) -> list[dict]:
     return statuses
 
 
-def get_monthly_summary(db: Session, year: int, month: int) -> dict:
+def get_monthly_summary(db: Session, user_id: uuid.UUID, year: int, month: int) -> dict:
     """
-    Aggregate income and expenses for a given month.
+    Aggregate this user's income and expenses for a given month.
     Returns data suitable for generate_insights().
     """
     start = date(year, month, 1)
@@ -90,14 +92,14 @@ def get_monthly_summary(db: Session, year: int, month: int) -> dict:
     # Total income
     total_income = (
         db.query(func.sum(Transaction.amount))
-        .filter(Transaction.type == "credit", Transaction.date >= start, Transaction.date < end)
+        .filter(Transaction.user_id == user_id, Transaction.type == "credit", Transaction.date >= start, Transaction.date < end)
         .scalar()
     ) or Decimal(0)
 
     # Total expenses
     total_expenses = (
         db.query(func.sum(Transaction.amount))
-        .filter(Transaction.type == "debit", Transaction.date >= start, Transaction.date < end)
+        .filter(Transaction.user_id == user_id, Transaction.type == "debit", Transaction.date >= start, Transaction.date < end)
         .scalar()
     ) or Decimal(0)
 
@@ -105,7 +107,7 @@ def get_monthly_summary(db: Session, year: int, month: int) -> dict:
     category_rows = (
         db.query(Category.name, func.sum(Transaction.amount).label("total"))
         .join(Transaction, Transaction.category_id == Category.id)
-        .filter(Transaction.type == "debit", Transaction.date >= start, Transaction.date < end)
+        .filter(Transaction.user_id == user_id, Transaction.type == "debit", Transaction.date >= start, Transaction.date < end)
         .group_by(Category.name)
         .order_by(func.sum(Transaction.amount).desc())
         .limit(8)
@@ -113,7 +115,10 @@ def get_monthly_summary(db: Session, year: int, month: int) -> dict:
     )
 
     # Merge budget limits into category data
-    budget_status = {b["category_name"]: b["limit"] for b in get_budget_status(db, end - __import__("datetime").timedelta(days=1))}
+    budget_status = {
+        b["category_name"]: b["limit"]
+        for b in get_budget_status(db, user_id, end - __import__("datetime").timedelta(days=1))
+    }
 
     top_categories = [
         {
@@ -133,3 +138,44 @@ def get_monthly_summary(db: Session, year: int, month: int) -> dict:
         "top_categories": top_categories,
         "anomalies":      [],   # caller can enrich this from detect_anomalies()
     }
+
+
+def get_monthly_trend(db: Session, user_id: uuid.UUID, end_year: int, end_month: int, months: int = 6) -> list[dict]:
+    """
+    Total income/expenses for each of the `months` trailing calendar months,
+    ending at (end_year, end_month) inclusive. Used for the Dashboard's
+    income-vs-expenses chart.
+    """
+    trend = []
+    year, month = end_year, end_month
+    for _ in range(months):
+        start = date(year, month, 1)
+        end = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
+
+        total_income = (
+            db.query(func.sum(Transaction.amount))
+            .filter(Transaction.user_id == user_id, Transaction.type == "credit", Transaction.date >= start, Transaction.date < end)
+            .scalar()
+        ) or Decimal(0)
+
+        total_expenses = (
+            db.query(func.sum(Transaction.amount))
+            .filter(Transaction.user_id == user_id, Transaction.type == "debit", Transaction.date >= start, Transaction.date < end)
+            .scalar()
+        ) or Decimal(0)
+
+        trend.append({
+            "period":         start.strftime("%b %Y"),
+            "year":           year,
+            "month":          month,
+            "total_income":   float(total_income),
+            "total_expenses": float(total_expenses),
+        })
+
+        month -= 1
+        if month < 1:
+            month = 12
+            year -= 1
+
+    trend.reverse()
+    return trend

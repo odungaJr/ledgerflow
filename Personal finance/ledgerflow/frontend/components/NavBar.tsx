@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { logout } from "@/lib/api";
+import LogoMark from "@/components/LogoMark";
 
 const PRIMARY_LINKS = [
   { href: "/", label: "Dashboard" },
@@ -15,6 +16,7 @@ const PLANNING_LINKS = [
   { href: "/budgets", label: "Budgets" },
   { href: "/income", label: "Income" },
   { href: "/assets", label: "Assets" },
+  { href: "/liabilities", label: "Liabilities" },
   { href: "/reports/pnl", label: "P&L Statement" },
 ];
 
@@ -50,7 +52,13 @@ export default function NavBar() {
   return (
     <nav className="nav">
       <div className="navInner">
-        <Link href="/" className="brand" onClick={() => setOpen(false)}>
+        <Link
+          href="/"
+          className="brand"
+          onClick={() => setOpen(false)}
+          style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}
+        >
+          <LogoMark size={26} />
           LedgerFlow
         </Link>
 

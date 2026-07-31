@@ -18,10 +18,48 @@ def test_register_rejects_short_password(unauthenticated_client):
     assert resp.status_code == 422
 
 
-def test_register_conflicts_once_initialized(unauthenticated_client):
+def test_register_allows_a_second_user_with_a_different_username(unauthenticated_client):
     unauthenticated_client.post("/auth/register", json={"username": "moses", "password": "correct-horse"})
     resp = unauthenticated_client.post("/auth/register", json={"username": "anyone", "password": "correct-horse"})
+    assert resp.status_code == 201
+    assert resp.json() == {"username": "anyone"}
+
+
+def test_register_rejects_a_duplicate_username(unauthenticated_client):
+    unauthenticated_client.post("/auth/register", json={"username": "moses", "password": "correct-horse"})
+    unauthenticated_client.post("/auth/logout")
+    resp = unauthenticated_client.post("/auth/register", json={"username": "moses", "password": "another-password"})
     assert resp.status_code == 409
+
+
+def test_fresh_registration_gets_its_own_seeded_categories(unauthenticated_client):
+    unauthenticated_client.post("/auth/register", json={"username": "moses", "password": "correct-horse"})
+    categories = unauthenticated_client.get("/categories").json()
+    assert len(categories) == 23
+    assert any(c["name"] == "Food & Dining" for c in categories)
+
+
+def test_second_user_gets_their_own_empty_dataset(unauthenticated_client):
+    unauthenticated_client.post("/auth/register", json={"username": "moses", "password": "correct-horse"})
+    unauthenticated_client.post("/accounts", json={"name": "Moses's account", "bank": "CRDB"})
+    unauthenticated_client.post("/auth/logout")
+
+    unauthenticated_client.post("/auth/register", json={"username": "second", "password": "correct-horse"})
+    resp = unauthenticated_client.get("/accounts")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+    # Second user's own categories exist and are separate rows from moses's.
+    second_categories = {c["id"] for c in unauthenticated_client.get("/categories").json()}
+
+    unauthenticated_client.post("/auth/logout")
+    unauthenticated_client.post("/auth/login", json={"username": "moses", "password": "correct-horse"})
+    moses_categories = {c["id"] for c in unauthenticated_client.get("/categories").json()}
+    moses_accounts = unauthenticated_client.get("/accounts").json()
+
+    assert second_categories.isdisjoint(moses_categories)
+    assert len(moses_accounts) == 1
+    assert moses_accounts[0]["name"] == "Moses's account"
 
 
 def test_login_succeeds_with_correct_credentials(unauthenticated_client):

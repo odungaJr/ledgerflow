@@ -16,8 +16,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.core.auth import get_current_user
 from app.core.database import get_db
-from app.models.models import Account
+from app.models.models import Account, User
 from app.services.account_engine import compute_balance
 
 router = APIRouter(prefix="/accounts", tags=["Accounts"])
@@ -58,9 +59,10 @@ def _serialise(account: Account) -> dict:
 # ── Endpoints ──────────────────────────────────────────────────────────────────
 
 @router.post("", status_code=201, summary="Create a bank account")
-def create_account(body: AccountCreate, db: Session = Depends(get_db)):
+def create_account(body: AccountCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     account = Account(
         id       = uuid.uuid4(),
+        user_id  = user.id,
         name     = body.name,
         bank     = body.bank,
         currency = body.currency,
@@ -75,9 +77,10 @@ def create_account(body: AccountCreate, db: Session = Depends(get_db)):
 @router.get("", summary="List accounts")
 def list_accounts(
     include_inactive: bool = False,
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    q = db.query(Account)
+    q = db.query(Account).filter(Account.user_id == user.id)
     if not include_inactive:
         q = q.filter(Account.is_active == True)
     accounts = q.order_by(Account.created_at).all()
@@ -85,16 +88,18 @@ def list_accounts(
 
 
 @router.get("/{account_id}", summary="Get a single account")
-def get_account(account_id: str, db: Session = Depends(get_db)):
-    account = db.query(Account).filter(Account.id == uuid.UUID(account_id)).first()
+def get_account(account_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    account = db.query(Account).filter(Account.id == uuid.UUID(account_id), Account.user_id == user.id).first()
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
     return _serialise(account)
 
 
 @router.patch("/{account_id}", summary="Update an account")
-def update_account(account_id: str, body: AccountPatch, db: Session = Depends(get_db)):
-    account = db.query(Account).filter(Account.id == uuid.UUID(account_id)).first()
+def update_account(
+    account_id: str, body: AccountPatch, user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    account = db.query(Account).filter(Account.id == uuid.UUID(account_id), Account.user_id == user.id).first()
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
 
@@ -117,8 +122,8 @@ def update_account(account_id: str, body: AccountPatch, db: Session = Depends(ge
 
 
 @router.delete("/{account_id}", summary="Delete an account (cascades to its transactions)")
-def delete_account(account_id: str, db: Session = Depends(get_db)):
-    account = db.query(Account).filter(Account.id == uuid.UUID(account_id)).first()
+def delete_account(account_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    account = db.query(Account).filter(Account.id == uuid.UUID(account_id), Account.user_id == user.id).first()
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
     db.delete(account)

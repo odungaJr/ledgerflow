@@ -14,6 +14,7 @@ import uuid
 from datetime import date, timedelta
 from decimal import Decimal
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.models import IncomeEntry, RecurrencePeriod
@@ -33,19 +34,21 @@ def _advance(d: date, period: RecurrencePeriod) -> date:
     return date(year, month, min(d.day, last_day))
 
 
-def ensure_recurring_occurrences(db: Session, through_date: date) -> None:
+def ensure_recurring_occurrences(db: Session, user_id: uuid.UUID, through_date: date) -> None:
     """
-    For every recurring income series, make sure an occurrence exists for
-    every period up to and including `through_date`. Idempotent — safe to
-    call on every read.
+    For every one of this user's recurring income series, make sure an
+    occurrence exists for every period up to and including `through_date`.
+    Idempotent — safe to call on every read. A UNIQUE(series_id,
+    expected_date) constraint guards against a duplicate occurrence if this
+    ever runs concurrently for the same series; that race is treated as
+    "someone else already created it" and ignored.
     """
     templates = (
         db.query(IncomeEntry)
-        .filter(IncomeEntry.is_recurring == True, IncomeEntry.series_id == IncomeEntry.id)
+        .filter(IncomeEntry.user_id == user_id, IncomeEntry.is_recurring == True, IncomeEntry.series_id == IncomeEntry.id)
         .all()
     )
 
-    created = False
     for template in templates:
         latest = (
             db.query(IncomeEntry)
@@ -55,22 +58,26 @@ def ensure_recurring_occurrences(db: Session, through_date: date) -> None:
         )
         next_date = _advance(latest.expected_date, template.recurrence_period)
         while next_date <= through_date:
-            db.add(IncomeEntry(
-                id                = uuid.uuid4(),
-                series_id         = template.id,
-                category_id       = template.category_id,
-                source            = template.source,
-                expected_amount   = latest.expected_amount,
-                expected_date     = next_date,
-                received_amount   = Decimal(0),
-                is_recurring      = True,
-                recurrence_period = template.recurrence_period,
-            ))
-            created = True
+            try:
+                with db.begin_nested():
+                    db.add(IncomeEntry(
+                        id                = uuid.uuid4(),
+                        user_id           = template.user_id,
+                        series_id         = template.id,
+                        category_id       = template.category_id,
+                        source            = template.source,
+                        expected_amount   = latest.expected_amount,
+                        expected_date     = next_date,
+                        received_amount   = Decimal(0),
+                        is_recurring      = True,
+                        recurrence_period = template.recurrence_period,
+                    ))
+            except IntegrityError:
+                # Another concurrent call already created this occurrence.
+                pass
             next_date = _advance(next_date, template.recurrence_period)
 
-    if created:
-        db.commit()
+    db.commit()
 
 
 def entry_status(entry: IncomeEntry) -> dict:
@@ -95,15 +102,15 @@ def _period_bounds(year: int, month: int) -> tuple[date, date]:
     return start, end
 
 
-def list_entries(db: Session, year: int | None = None, month: int | None = None) -> list[IncomeEntry]:
-    """List income entries, generating any due recurring occurrences first."""
+def list_entries(db: Session, user_id: uuid.UUID, year: int | None = None, month: int | None = None) -> list[IncomeEntry]:
+    """List this user's income entries, generating any due recurring occurrences first."""
     if year and month:
         _, end = _period_bounds(year, month)
-        ensure_recurring_occurrences(db, end - timedelta(days=1))
+        ensure_recurring_occurrences(db, user_id, end - timedelta(days=1))
     else:
-        ensure_recurring_occurrences(db, date.today())
+        ensure_recurring_occurrences(db, user_id, date.today())
 
-    q = db.query(IncomeEntry)
+    q = db.query(IncomeEntry).filter(IncomeEntry.user_id == user_id)
     if year and month:
         start, end = _period_bounds(year, month)
         q = q.filter(IncomeEntry.expected_date >= start, IncomeEntry.expected_date < end)
@@ -125,12 +132,12 @@ def _summarise(entries: list[IncomeEntry]) -> dict:
     }
 
 
-def get_income_summary(db: Session, year: int, month: int) -> dict:
+def get_income_summary(db: Session, user_id: uuid.UUID, year: int, month: int) -> dict:
     """Aggregate expected/received/pending income for a given month."""
-    return _summarise(list_entries(db, year, month))
+    return _summarise(list_entries(db, user_id, year, month))
 
 
-def get_income_summary_all_time(db: Session) -> dict:
+def get_income_summary_all_time(db: Session, user_id: uuid.UUID) -> dict:
     """
     Lifetime expected/received/pending totals "to date" — entries whose
     expected_date has actually arrived. Excludes not-yet-due future
@@ -138,5 +145,5 @@ def get_income_summary_all_time(db: Session) -> dict:
     forward), which would otherwise inflate "expected to date" with income
     that hasn't come due yet.
     """
-    entries = [e for e in list_entries(db) if e.expected_date <= date.today()]
+    entries = [e for e in list_entries(db, user_id) if e.expected_date <= date.today()]
     return _summarise(entries)

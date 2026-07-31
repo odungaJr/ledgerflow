@@ -19,3 +19,29 @@ def test_dashboard_summary_includes_all_time_income(client):
     assert body["income_tracker"]["total_expected"] == 500_000
     assert body["income_all_time"]["total_expected"] == 1_000_000
     assert body["income_all_time"]["total_received"] == 500_000
+
+
+def test_dashboard_summary_folds_in_net_worth(client):
+    client.post("/assets", json={
+        "name": "Shares", "asset_type": "stocks", "value_date": "2026-01-01", "total_value": 1_000_000,
+    })
+    client.post("/liabilities", json={
+        "name": "Car Loan", "liability_type": "loan", "value_date": "2026-01-01", "total_value": 300_000,
+    })
+
+    resp = client.get("/dashboard/summary", params={"year": 2026, "month": 1})
+    assert resp.status_code == 200
+    body = resp.json()
+
+    assert body["assets"]["total_value"] == 1_000_000
+    assert body["liabilities"]["total_value"] == 300_000
+    assert body["net_worth"]["total"] == 700_000
+    assert body["net_worth"]["trend"][-1]["net_worth"] == 700_000
+
+
+def test_dashboard_summary_includes_monthly_trend(client):
+    resp = client.get("/dashboard/summary", params={"year": 2026, "month": 6})
+    assert resp.status_code == 200
+    trend = resp.json()["monthly_trend"]
+    assert len(trend) == 6
+    assert trend[-1]["period"] == "Jun 2026"

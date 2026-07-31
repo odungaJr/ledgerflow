@@ -4,8 +4,8 @@ from datetime import date
 from app.models.models import Account, Transaction, TransactionType
 
 
-def _make_account(db_session):
-    account = Account(id=uuid.uuid4(), name="Test Account", bank="CRDB")
+def _make_account(db_session, user_id):
+    account = Account(id=uuid.uuid4(), user_id=user_id, name="Test Account", bank="CRDB")
     db_session.add(account)
     db_session.commit()
     return account
@@ -14,6 +14,7 @@ def _make_account(db_session):
 def _make_txn(db_session, account, txn_date, description, amount, txn_type, category=None):
     txn = Transaction(
         id=uuid.uuid4(),
+        user_id=account.user_id,
         account_id=account.id,
         category_id=category.id if category else None,
         date=txn_date,
@@ -27,8 +28,8 @@ def _make_txn(db_session, account, txn_date, description, amount, txn_type, cate
     return txn
 
 
-def test_pnl_totals_and_net(client, db_session, seed_categories):
-    account = _make_account(db_session)
+def test_pnl_totals_and_net(client, db_session, test_user, seed_categories):
+    account = _make_account(db_session, test_user.id)
     _make_txn(db_session, account, date(2026, 7, 1), "SALARY", 500000, TransactionType.credit,
               seed_categories["Salary & Wages"])
     _make_txn(db_session, account, date(2026, 7, 5), "GROCERIES", 150000, TransactionType.debit,
@@ -52,8 +53,8 @@ def test_pnl_totals_and_net(client, db_session, seed_categories):
     }
 
 
-def test_pnl_groups_uncategorised_transactions(client, db_session):
-    account = _make_account(db_session)
+def test_pnl_groups_uncategorised_transactions(client, db_session, test_user):
+    account = _make_account(db_session, test_user.id)
     _make_txn(db_session, account, date(2026, 7, 1), "UNKNOWN DEBIT", 5000, TransactionType.debit)
 
     resp = client.get("/reports/pnl", params={"from_date": "2026-07-01", "to_date": "2026-07-31"})

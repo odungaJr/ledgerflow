@@ -18,8 +18,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.core.auth import get_current_user
 from app.core.database import get_db
-from app.models.models import Asset, AssetType, AssetValue
+from app.models.models import Asset, AssetType, AssetValue, User
 from app.services.asset_engine import get_assets_summary
 
 router = APIRouter(prefix="/assets", tags=["Assets"])
@@ -72,15 +73,23 @@ def _serialise(asset: Asset) -> dict:
     }
 
 
+def _get_owned_asset(asset_id: str, user_id: uuid.UUID, db: Session) -> Asset:
+    asset = db.query(Asset).filter(Asset.id == uuid.UUID(asset_id), Asset.user_id == user_id).first()
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    return asset
+
+
 # ── Endpoints ──────────────────────────────────────────────────────────────────
 
 @router.post("", status_code=201, summary="Create an asset with its initial value")
-def create_asset(body: AssetCreate, db: Session = Depends(get_db)):
+def create_asset(body: AssetCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if body.asset_type not in AssetType._value2member_map_:
         raise HTTPException(status_code=422, detail=f"asset_type must be one of {list(AssetType._value2member_map_)}")
 
     asset = Asset(
         id         = uuid.uuid4(),
+        user_id    = user.id,
         name       = body.name,
         asset_type = AssetType(body.asset_type),
         quantity   = body.quantity,
@@ -92,6 +101,7 @@ def create_asset(body: AssetCreate, db: Session = Depends(get_db)):
 
     db.add(AssetValue(
         id          = uuid.uuid4(),
+        user_id     = asset.user_id,   # copied from the asset, not set independently
         asset_id    = asset.id,
         value_date  = body.value_date,
         unit_value  = body.unit_value,
@@ -104,16 +114,16 @@ def create_asset(body: AssetCreate, db: Session = Depends(get_db)):
 
 
 @router.get("", summary="List active assets with current value")
-def list_assets(db: Session = Depends(get_db)):
-    assets = db.query(Asset).filter(Asset.is_active == True).order_by(Asset.name).all()
+def list_assets(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    assets = db.query(Asset).filter(Asset.user_id == user.id, Asset.is_active == True).order_by(Asset.name).all()
     return [_serialise(a) for a in assets]
 
 
 @router.patch("/{asset_id}", summary="Edit an asset's static fields")
-def patch_asset(asset_id: str, body: AssetPatch, db: Session = Depends(get_db)):
-    asset = db.query(Asset).filter(Asset.id == uuid.UUID(asset_id)).first()
-    if not asset:
-        raise HTTPException(status_code=404, detail="Asset not found")
+def patch_asset(
+    asset_id: str, body: AssetPatch, user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    asset = _get_owned_asset(asset_id, user.id, db)
 
     if body.name is not None:
         asset.name = body.name
@@ -136,13 +146,14 @@ def patch_asset(asset_id: str, body: AssetPatch, db: Session = Depends(get_db)):
 
 
 @router.post("/{asset_id}/values", status_code=201, summary="Add a new value snapshot")
-def add_asset_value(asset_id: str, body: AssetValueCreate, db: Session = Depends(get_db)):
-    asset = db.query(Asset).filter(Asset.id == uuid.UUID(asset_id)).first()
-    if not asset:
-        raise HTTPException(status_code=404, detail="Asset not found")
+def add_asset_value(
+    asset_id: str, body: AssetValueCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    asset = _get_owned_asset(asset_id, user.id, db)
 
     value = AssetValue(
         id          = uuid.uuid4(),
+        user_id     = asset.user_id,   # copied from the asset, not set independently
         asset_id    = asset.id,
         value_date  = body.value_date,
         unit_value  = body.unit_value,
@@ -155,10 +166,8 @@ def add_asset_value(asset_id: str, body: AssetValueCreate, db: Session = Depends
 
 
 @router.get("/{asset_id}/history", summary="Value snapshot history for one asset")
-def asset_history(asset_id: str, db: Session = Depends(get_db)):
-    asset = db.query(Asset).filter(Asset.id == uuid.UUID(asset_id)).first()
-    if not asset:
-        raise HTTPException(status_code=404, detail="Asset not found")
+def asset_history(asset_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    asset = _get_owned_asset(asset_id, user.id, db)
 
     values = sorted(asset.values, key=lambda v: v.value_date)
     return [
@@ -173,15 +182,13 @@ def asset_history(asset_id: str, db: Session = Depends(get_db)):
 
 
 @router.delete("/{asset_id}", summary="Delete an asset")
-def delete_asset(asset_id: str, db: Session = Depends(get_db)):
-    asset = db.query(Asset).filter(Asset.id == uuid.UUID(asset_id)).first()
-    if not asset:
-        raise HTTPException(status_code=404, detail="Asset not found")
+def delete_asset(asset_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    asset = _get_owned_asset(asset_id, user.id, db)
     db.delete(asset)
     db.commit()
     return {"status": "deleted", "id": asset_id}
 
 
 @router.get("/summary", summary="Net worth: total value, breakdown by type, trend")
-def assets_summary(db: Session = Depends(get_db)):
-    return get_assets_summary(db)
+def assets_summary(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return get_assets_summary(db, user.id)

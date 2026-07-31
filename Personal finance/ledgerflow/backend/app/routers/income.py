@@ -17,8 +17,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.core.auth import get_current_user
 from app.core.database import get_db
-from app.models.models import Category, IncomeEntry, RecurrencePeriod
+from app.models.models import Category, IncomeEntry, RecurrencePeriod, User
 from app.services.income_engine import (
     entry_status,
     get_income_summary,
@@ -71,19 +72,20 @@ def _serialise(entry: IncomeEntry) -> dict:
 # ── Endpoints ──────────────────────────────────────────────────────────────────
 
 @router.post("", status_code=201, summary="Create an expected-income entry")
-def create_income_entry(body: IncomeCreate, db: Session = Depends(get_db)):
+def create_income_entry(body: IncomeCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if body.is_recurring:
         if not body.recurrence_period or body.recurrence_period not in RecurrencePeriod._value2member_map_:
             raise HTTPException(status_code=422, detail="recurrence_period must be 'monthly' or 'weekly' when is_recurring is true")
 
     category = None
     if body.category_name:
-        category = db.query(Category).filter(Category.name == body.category_name).first()
+        category = db.query(Category).filter(Category.user_id == user.id, Category.name == body.category_name).first()
         if not category:
             raise HTTPException(status_code=404, detail=f"Category '{body.category_name}' not found")
 
     entry = IncomeEntry(
         id                = uuid.uuid4(),
+        user_id           = user.id,
         category_id       = category.id if category else None,
         source            = body.source,
         expected_amount   = body.expected_amount,
@@ -107,9 +109,10 @@ def create_income_entry(body: IncomeCreate, db: Session = Depends(get_db)):
 def get_income_entries(
     year:  Optional[int] = Query(None),
     month: Optional[int] = Query(None),
+    user:  User = Depends(get_current_user),
     db:    Session = Depends(get_db),
 ):
-    entries = list_entries(db, year, month)
+    entries = list_entries(db, user.id, year, month)
     return [_serialise(e) for e in entries]
 
 
@@ -117,19 +120,22 @@ def get_income_entries(
 def income_summary(
     year:  int = Query(default=date.today().year),
     month: int = Query(default=date.today().month),
+    user:  User = Depends(get_current_user),
     db:    Session = Depends(get_db),
 ):
-    return get_income_summary(db, year, month)
+    return get_income_summary(db, user.id, year, month)
 
 
 @router.get("/summary/all-time", summary="Lifetime expected/received/pending totals")
-def income_summary_all_time(db: Session = Depends(get_db)):
-    return get_income_summary_all_time(db)
+def income_summary_all_time(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return get_income_summary_all_time(db, user.id)
 
 
 @router.patch("/{entry_id}", summary="Record a received amount or edit an entry")
-def patch_income_entry(entry_id: str, body: IncomePatch, db: Session = Depends(get_db)):
-    entry = db.query(IncomeEntry).filter(IncomeEntry.id == uuid.UUID(entry_id)).first()
+def patch_income_entry(
+    entry_id: str, body: IncomePatch, user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    entry = db.query(IncomeEntry).filter(IncomeEntry.id == uuid.UUID(entry_id), IncomeEntry.user_id == user.id).first()
     if not entry:
         raise HTTPException(status_code=404, detail="Income entry not found")
 
@@ -150,8 +156,8 @@ def patch_income_entry(entry_id: str, body: IncomePatch, db: Session = Depends(g
 
 
 @router.delete("/{entry_id}", summary="Delete a single income entry")
-def delete_income_entry(entry_id: str, db: Session = Depends(get_db)):
-    entry = db.query(IncomeEntry).filter(IncomeEntry.id == uuid.UUID(entry_id)).first()
+def delete_income_entry(entry_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    entry = db.query(IncomeEntry).filter(IncomeEntry.id == uuid.UUID(entry_id), IncomeEntry.user_id == user.id).first()
     if not entry:
         raise HTTPException(status_code=404, detail="Income entry not found")
 
@@ -159,7 +165,7 @@ def delete_income_entry(entry_id: str, db: Session = Depends(get_db)):
     # occurrences pointing at a series_id with nothing behind it (and a
     # dangling FK if any still exist) — delete the whole series instead.
     if entry.series_id == entry.id:
-        db.query(IncomeEntry).filter(IncomeEntry.series_id == entry.id).delete()
+        db.query(IncomeEntry).filter(IncomeEntry.series_id == entry.id, IncomeEntry.user_id == user.id).delete()
     else:
         db.delete(entry)
     db.commit()

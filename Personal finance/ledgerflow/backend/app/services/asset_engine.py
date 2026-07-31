@@ -8,6 +8,7 @@ value trend across all assets' history.
 Computed in Python rather than SQL — a personal portfolio's data volume
 is trivial, so simple list scans are fine and keep the query layer thin.
 """
+import uuid
 from collections import defaultdict
 from decimal import Decimal
 
@@ -16,10 +17,10 @@ from sqlalchemy.orm import Session
 from app.models.models import Asset, AssetValue
 
 
-def get_assets_summary(db: Session) -> dict:
+def get_assets_summary(db: Session, user_id: uuid.UUID) -> dict:
     assets = (
         db.query(Asset)
-        .filter(Asset.is_active == True)
+        .filter(Asset.user_id == user_id, Asset.is_active == True)
         .all()
     )
 

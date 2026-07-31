@@ -125,12 +125,64 @@ export interface AssetsSummary {
   trend: { date: string; total_value: number }[];
 }
 
+export interface Liability {
+  id: string;
+  name: string;
+  liability_type: "credit_card" | "loan" | "mortgage" | "personal_debt" | "other";
+  currency: string;
+  is_active: boolean;
+  notes: string | null;
+  current_value: number | null;
+  value_date: string | null;
+  change_amount: number | null;
+}
+
+export interface LiabilityValueSnapshot {
+  id: string;
+  value_date: string;
+  total_value: number;
+}
+
+export interface LiabilitySummaryRow {
+  id: string;
+  name: string;
+  liability_type: string;
+  currency: string;
+  current_value: number;
+  value_date: string;
+  change_amount: number;
+  change_pct: number;
+}
+
+export interface LiabilitiesSummary {
+  total_value: number;
+  breakdown: { liability_type: string; total: number }[];
+  liabilities: LiabilitySummaryRow[];
+  trend: { date: string; total_value: number }[];
+}
+
+export interface NetWorth {
+  total: number;
+  trend: { date: string; net_worth: number }[];
+}
+
+export interface MonthlyTrendPoint {
+  period: string;
+  year: number;
+  month: number;
+  total_income: number;
+  total_expenses: number;
+}
+
 export interface DashboardSummaryResponse {
   summary: MonthlySummary;
   budget_alerts: BudgetStatus[];
   income_tracker: IncomeSummary;
   income_all_time: IncomeSummary;
   assets: AssetsSummary;
+  liabilities: LiabilitiesSummary;
+  net_worth: NetWorth;
+  monthly_trend: MonthlyTrendPoint[];
 }
 
 export interface DashboardInsightsResponse {

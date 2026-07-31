@@ -11,12 +11,14 @@ Tables:
   income_entries – manually tracked expected/received income
   assets         – things the user owns (shares, bonds, etc.)
   asset_values   – dated value snapshots per asset
+  liabilities    – debts the user owes (loans, credit cards, etc.)
+  liability_values – dated balance snapshots per liability
 """
 import uuid
 from datetime import date, datetime
 from sqlalchemy import (
     Column, String, Numeric, Date, DateTime,
-    Boolean, ForeignKey, Text, Integer, Enum as SAEnum
+    Boolean, ForeignKey, Text, Integer, Enum as SAEnum, UniqueConstraint
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -50,6 +52,14 @@ class AssetType(str, enum.Enum):
     real_estate = "real_estate"
     vehicle     = "vehicle"
     other       = "other"
+
+
+class LiabilityType(str, enum.Enum):
+    credit_card   = "credit_card"
+    loan          = "loan"
+    mortgage      = "mortgage"
+    personal_debt = "personal_debt"
+    other         = "other"
 
 
 # ── Auth ───────────────────────────────────────────────────────────────────────
@@ -91,6 +101,7 @@ class Account(Base):
     __tablename__ = "accounts"
 
     id         = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id    = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     name       = Column(String(120), nullable=False)          # e.g. "KCB Salary Account"
     bank       = Column(String(120), nullable=False)          # e.g. "KCB"
     currency   = Column(String(10), default="TZS")
@@ -111,9 +122,11 @@ class Account(Base):
 
 class Category(Base):
     __tablename__ = "categories"
+    __table_args__ = (UniqueConstraint("user_id", "name", name="uq_categories_user_id_name"),)
 
     id          = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name        = Column(String(80), nullable=False, unique=True)   # e.g. "Food & Dining"
+    user_id     = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    name        = Column(String(80), nullable=False)   # e.g. "Food & Dining" — unique per user
     icon        = Column(String(10), default="💳")                  # emoji shorthand
     is_income   = Column(Boolean, default=False)                    # True for salary/transfers in
     is_system   = Column(Boolean, default=True)                     # False = user-created
@@ -126,8 +139,12 @@ class Category(Base):
 
 class Transaction(Base):
     __tablename__ = "transactions"
+    __table_args__ = (
+        UniqueConstraint("user_id", "fingerprint", name="uq_transactions_user_id_fingerprint"),
+    )
 
     id              = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id         = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     account_id      = Column(UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
     category_id     = Column(UUID(as_uuid=True), ForeignKey("categories.id"), nullable=True)
 
@@ -142,8 +159,8 @@ class Transaction(Base):
     ai_confidence   = Column(Numeric(4, 3), nullable=True)   # 0.000 – 1.000
     is_confirmed    = Column(Boolean, default=False)         # user confirmed the category
 
-    # Deduplication hash (date + description + amount)
-    fingerprint     = Column(String(64), nullable=False, unique=True)
+    # Deduplication hash (date + description + amount) — unique per user, see __table_args__
+    fingerprint     = Column(String(64), nullable=False)
 
     notes           = Column(Text, nullable=True)
     created_at      = Column(DateTime(timezone=True), server_default=func.now())
@@ -158,6 +175,7 @@ class Budget(Base):
     __tablename__ = "budgets"
 
     id          = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id     = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     category_id = Column(UUID(as_uuid=True), ForeignKey("categories.id", ondelete="CASCADE"), nullable=False)
     period      = Column(SAEnum(BudgetPeriod), default=BudgetPeriod.monthly)
     limit_amount= Column(Numeric(18, 2), nullable=False)
@@ -172,8 +190,12 @@ class Budget(Base):
 
 class IncomeEntry(Base):
     __tablename__ = "income_entries"
+    __table_args__ = (
+        UniqueConstraint("series_id", "expected_date", name="uq_income_entries_series_id_expected_date"),
+    )
 
     id          = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id     = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     series_id   = Column(UUID(as_uuid=True), ForeignKey("income_entries.id"), nullable=True)
     category_id = Column(UUID(as_uuid=True), ForeignKey("categories.id"), nullable=True)
 
@@ -198,6 +220,7 @@ class Asset(Base):
     __tablename__ = "assets"
 
     id         = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id    = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     name       = Column(String(120), nullable=False)          # e.g. "CRDB Bank shares"
     asset_type = Column(SAEnum(AssetType), nullable=False)
     quantity   = Column(Numeric(18, 4), nullable=True)         # e.g. share count
@@ -216,6 +239,7 @@ class AssetValue(Base):
     __tablename__ = "asset_values"
 
     id         = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id    = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     asset_id   = Column(UUID(as_uuid=True), ForeignKey("assets.id", ondelete="CASCADE"), nullable=False)
     value_date = Column(Date, nullable=False)
     unit_value = Column(Numeric(18, 4), nullable=True)         # optional price per unit
@@ -223,3 +247,36 @@ class AssetValue(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     asset = relationship("Asset", back_populates="values")
+
+
+# ── Liabilities ────────────────────────────────────────────────────────────────
+
+class Liability(Base):
+    __tablename__ = "liabilities"
+
+    id             = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id        = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    name           = Column(String(120), nullable=False)          # e.g. "NMB Car Loan"
+    liability_type = Column(SAEnum(LiabilityType), nullable=False)
+    currency       = Column(String(10), default="TZS")
+    is_active      = Column(Boolean, default=True)                 # False = paid off / closed
+    notes          = Column(Text, nullable=True)
+    created_at     = Column(DateTime(timezone=True), server_default=func.now())
+
+    values = relationship(
+        "LiabilityValue", back_populates="liability",
+        cascade="all, delete-orphan", order_by="LiabilityValue.value_date",
+    )
+
+
+class LiabilityValue(Base):
+    __tablename__ = "liability_values"
+
+    id           = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id      = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    liability_id = Column(UUID(as_uuid=True), ForeignKey("liabilities.id", ondelete="CASCADE"), nullable=False)
+    value_date   = Column(Date, nullable=False)
+    total_value  = Column(Numeric(18, 2), nullable=False)          # balance owed as of this date
+    created_at   = Column(DateTime(timezone=True), server_default=func.now())
+
+    liability = relationship("Liability", back_populates="values")

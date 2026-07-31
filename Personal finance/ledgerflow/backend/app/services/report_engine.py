@@ -4,6 +4,7 @@ Report Engine
 Builds a Profit & Loss statement (income vs. expenses, by category) for an
 arbitrary date range, from imported/confirmed transactions.
 """
+import uuid
 from datetime import date
 from decimal import Decimal
 
@@ -13,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.models.models import Category, Transaction
 
 
-def _breakdown(db: Session, txn_type: str, from_date: date, to_date: date) -> list[dict]:
+def _breakdown(db: Session, user_id: uuid.UUID, txn_type: str, from_date: date, to_date: date) -> list[dict]:
     rows = (
         db.query(
             func.coalesce(Category.name, "Uncategorised").label("name"),
@@ -23,6 +24,7 @@ def _breakdown(db: Session, txn_type: str, from_date: date, to_date: date) -> li
         .select_from(Transaction)
         .outerjoin(Category, Transaction.category_id == Category.id)
         .filter(
+            Transaction.user_id == user_id,
             Transaction.type == txn_type,
             Transaction.date >= from_date,
             Transaction.date <= to_date,
@@ -34,10 +36,10 @@ def _breakdown(db: Session, txn_type: str, from_date: date, to_date: date) -> li
     return [{"name": r.name, "icon": r.icon, "total": float(r.total)} for r in rows]
 
 
-def get_pnl(db: Session, from_date: date, to_date: date) -> dict:
+def get_pnl(db: Session, user_id: uuid.UUID, from_date: date, to_date: date) -> dict:
     """Profit & Loss statement for [from_date, to_date] (inclusive)."""
-    income = _breakdown(db, "credit", from_date, to_date)
-    expenses = _breakdown(db, "debit", from_date, to_date)
+    income = _breakdown(db, user_id, "credit", from_date, to_date)
+    expenses = _breakdown(db, user_id, "debit", from_date, to_date)
 
     total_income = Decimal(str(sum(r["total"] for r in income))) if income else Decimal(0)
     total_expenses = Decimal(str(sum(r["total"] for r in expenses))) if expenses else Decimal(0)

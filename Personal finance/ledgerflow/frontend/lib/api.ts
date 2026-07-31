@@ -10,6 +10,9 @@ import type {
   ImportResult,
   IncomeEntry,
   IncomeSummary,
+  Liability,
+  LiabilitiesSummary,
+  LiabilityValueSnapshot,
   PnlStatement,
   Transaction,
 } from "./types";
@@ -270,6 +273,35 @@ export const deleteAsset = (id: string) =>
   request<{ status: string; id: string }>(`/assets/${id}`, { method: "DELETE" });
 
 export const getAssetsSummary = () => request<AssetsSummary>("/assets/summary");
+
+// ── Liabilities ──────────────────────────────────────────────────────────────
+
+export const getLiabilities = () => request<Liability[]>("/liabilities");
+
+export const createLiability = (data: {
+  name: string;
+  liability_type: string;
+  currency?: string;
+  value_date: string;
+  total_value: number;
+  notes?: string;
+}) => request<Liability>("/liabilities", { method: "POST", body: JSON.stringify(data) });
+
+export const patchLiability = (
+  id: string,
+  data: Partial<Pick<Liability, "name" | "liability_type" | "currency" | "is_active" | "notes">>
+) => request<Liability>(`/liabilities/${id}`, { method: "PATCH", body: JSON.stringify(data) });
+
+export const addLiabilityValue = (id: string, data: { value_date: string; total_value: number }) =>
+  request<Liability>(`/liabilities/${id}/values`, { method: "POST", body: JSON.stringify(data) });
+
+export const getLiabilityHistory = (id: string) =>
+  request<LiabilityValueSnapshot[]>(`/liabilities/${id}/history`);
+
+export const deleteLiability = (id: string) =>
+  request<{ status: string; id: string }>(`/liabilities/${id}`, { method: "DELETE" });
+
+export const getLiabilitiesSummary = () => request<LiabilitiesSummary>("/liabilities/summary");
 
 // ── Dashboard ────────────────────────────────────────────────────────────────
 

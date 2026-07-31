@@ -14,8 +14,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.core.auth import get_current_user
 from app.core.database import get_db
-from app.models.models import Budget, Category, BudgetPeriod
+from app.models.models import Budget, Category, BudgetPeriod, User
 from app.services.budget_engine import get_budget_status
 
 router = APIRouter(prefix="/budgets", tags=["Budgets"])
@@ -38,8 +39,8 @@ class BudgetPatch(BaseModel):
 # ── Endpoints ──────────────────────────────────────────────────────────────────
 
 @router.post("", status_code=201, summary="Create a budget")
-def create_budget(body: BudgetCreate, db: Session = Depends(get_db)):
-    cat = db.query(Category).filter(Category.name == body.category_name).first()
+def create_budget(body: BudgetCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    cat = db.query(Category).filter(Category.user_id == user.id, Category.name == body.category_name).first()
     if not cat:
         raise HTTPException(status_code=404, detail=f"Category '{body.category_name}' not found")
 
@@ -48,6 +49,7 @@ def create_budget(body: BudgetCreate, db: Session = Depends(get_db)):
 
     budget = Budget(
         id           = uuid.uuid4(),
+        user_id      = user.id,
         category_id  = cat.id,
         period       = BudgetPeriod(body.period),
         limit_amount = body.limit_amount,
@@ -62,13 +64,15 @@ def create_budget(body: BudgetCreate, db: Session = Depends(get_db)):
 
 
 @router.get("", summary="List budgets with live spend status")
-def list_budgets(db: Session = Depends(get_db)):
-    return get_budget_status(db)
+def list_budgets(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return get_budget_status(db, user.id)
 
 
 @router.patch("/{budget_id}", summary="Update a budget")
-def update_budget(budget_id: str, body: BudgetPatch, db: Session = Depends(get_db)):
-    budget = db.query(Budget).filter(Budget.id == uuid.UUID(budget_id)).first()
+def update_budget(
+    budget_id: str, body: BudgetPatch, user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    budget = db.query(Budget).filter(Budget.id == uuid.UUID(budget_id), Budget.user_id == user.id).first()
     if not budget:
         raise HTTPException(status_code=404, detail="Budget not found")
 
@@ -82,8 +86,8 @@ def update_budget(budget_id: str, body: BudgetPatch, db: Session = Depends(get_d
 
 
 @router.delete("/{budget_id}", summary="Delete a budget")
-def delete_budget(budget_id: str, db: Session = Depends(get_db)):
-    budget = db.query(Budget).filter(Budget.id == uuid.UUID(budget_id)).first()
+def delete_budget(budget_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    budget = db.query(Budget).filter(Budget.id == uuid.UUID(budget_id), Budget.user_id == user.id).first()
     if not budget:
         raise HTTPException(status_code=404, detail="Budget not found")
     db.delete(budget)

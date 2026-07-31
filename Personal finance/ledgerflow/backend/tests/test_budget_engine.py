@@ -2,11 +2,11 @@ import uuid
 from datetime import date
 
 from app.models.models import Account, Budget, BudgetPeriod, Transaction, TransactionType
-from app.services.budget_engine import _period_start, get_budget_status, get_monthly_summary
+from app.services.budget_engine import _period_start, get_budget_status, get_monthly_summary, get_monthly_trend
 
 
-def _make_account(db_session):
-    account = Account(id=uuid.uuid4(), name="Test Account", bank="Test Bank")
+def _make_account(db_session, user_id):
+    account = Account(id=uuid.uuid4(), user_id=user_id, name="Test Account", bank="Test Bank")
     db_session.add(account)
     db_session.commit()
     return account
@@ -15,6 +15,7 @@ def _make_account(db_session):
 def _make_txn(db_session, account, category, txn_date, amount, txn_type):
     txn = Transaction(
         id=uuid.uuid4(),
+        user_id=account.user_id,
         account_id=account.id,
         category_id=category.id,
         date=txn_date,
@@ -44,13 +45,14 @@ def test_period_start_weekly_returns_monday_of_current_week():
 
 # ── get_budget_status ────────────────────────────────────────────────────────
 
-def test_budget_status_ok_warning_breached(db_session, seed_categories):
-    account = _make_account(db_session)
+def test_budget_status_ok_warning_breached(db_session, test_user, seed_categories):
+    account = _make_account(db_session, test_user.id)
     food = seed_categories["Food & Dining"]
     ref_date = date(2024, 4, 20)
 
     budget = Budget(
         id=uuid.uuid4(),
+        user_id=test_user.id,
         category_id=food.id,
         period=BudgetPeriod.monthly,
         limit_amount=100_000,
@@ -62,7 +64,7 @@ def test_budget_status_ok_warning_breached(db_session, seed_categories):
 
     _make_txn(db_session, account, food, date(2024, 4, 5), 50_000, TransactionType.debit)
 
-    status = get_budget_status(db_session, ref_date)[0]
+    status = get_budget_status(db_session, test_user.id, ref_date)[0]
     assert status["spent"] == 50_000.0
     assert status["pct_used"] == 0.5
     assert status["is_warning"] is False
@@ -70,23 +72,24 @@ def test_budget_status_ok_warning_breached(db_session, seed_categories):
 
     # Push spend into the warning band (80-100%)
     _make_txn(db_session, account, food, date(2024, 4, 10), 35_000, TransactionType.debit)
-    status = get_budget_status(db_session, ref_date)[0]
+    status = get_budget_status(db_session, test_user.id, ref_date)[0]
     assert status["pct_used"] == 0.85
     assert status["is_warning"] is True
     assert status["is_breached"] is False
 
     # Push spend past the limit
     _make_txn(db_session, account, food, date(2024, 4, 12), 30_000, TransactionType.debit)
-    status = get_budget_status(db_session, ref_date)[0]
+    status = get_budget_status(db_session, test_user.id, ref_date)[0]
     assert status["is_breached"] is True
     assert status["is_warning"] is False
 
 
-def test_budget_status_ignores_transactions_outside_period(db_session, seed_categories):
-    account = _make_account(db_session)
+def test_budget_status_ignores_transactions_outside_period(db_session, test_user, seed_categories):
+    account = _make_account(db_session, test_user.id)
     food = seed_categories["Food & Dining"]
     budget = Budget(
         id=uuid.uuid4(),
+        user_id=test_user.id,
         category_id=food.id,
         period=BudgetPeriod.monthly,
         limit_amount=100_000,
@@ -99,14 +102,15 @@ def test_budget_status_ignores_transactions_outside_period(db_session, seed_cate
     # Previous month — should not count
     _make_txn(db_session, account, food, date(2024, 3, 25), 90_000, TransactionType.debit)
 
-    status = get_budget_status(db_session, date(2024, 4, 20))[0]
+    status = get_budget_status(db_session, test_user.id, date(2024, 4, 20))[0]
     assert status["spent"] == 0.0
 
 
-def test_budget_status_excludes_inactive_budgets(db_session, seed_categories):
+def test_budget_status_excludes_inactive_budgets(db_session, test_user, seed_categories):
     food = seed_categories["Food & Dining"]
     budget = Budget(
         id=uuid.uuid4(),
+        user_id=test_user.id,
         category_id=food.id,
         period=BudgetPeriod.monthly,
         limit_amount=100_000,
@@ -116,13 +120,30 @@ def test_budget_status_excludes_inactive_budgets(db_session, seed_categories):
     db_session.add(budget)
     db_session.commit()
 
-    assert get_budget_status(db_session, date(2024, 4, 20)) == []
+    assert get_budget_status(db_session, test_user.id, date(2024, 4, 20)) == []
+
+
+def test_budget_status_excludes_other_users_budgets(db_session, test_user, second_user, seed_categories):
+    food = seed_categories["Food & Dining"]
+    budget = Budget(
+        id=uuid.uuid4(),
+        user_id=second_user.id,
+        category_id=food.id,
+        period=BudgetPeriod.monthly,
+        limit_amount=100_000,
+        start_date=date(2024, 4, 1),
+        is_active=True,
+    )
+    db_session.add(budget)
+    db_session.commit()
+
+    assert get_budget_status(db_session, test_user.id, date(2024, 4, 20)) == []
 
 
 # ── get_monthly_summary ──────────────────────────────────────────────────────
 
-def test_monthly_summary_totals_and_top_categories(db_session, seed_categories):
-    account = _make_account(db_session)
+def test_monthly_summary_totals_and_top_categories(db_session, test_user, seed_categories):
+    account = _make_account(db_session, test_user.id)
     food = seed_categories["Food & Dining"]
     transport = seed_categories["Transport"]
     salary = seed_categories["Salary & Wages"]
@@ -134,7 +155,7 @@ def test_monthly_summary_totals_and_top_categories(db_session, seed_categories):
     # Outside the target month — must not be counted
     _make_txn(db_session, account, food, date(2024, 3, 20), 999_999, TransactionType.debit)
 
-    summary = get_monthly_summary(db_session, 2024, 4)
+    summary = get_monthly_summary(db_session, test_user.id, 2024, 4)
 
     assert summary["period"] == "April 2024"
     assert summary["total_income"] == 1_000_000.0
@@ -146,9 +167,34 @@ def test_monthly_summary_totals_and_top_categories(db_session, seed_categories):
     assert "Transport" in names
 
 
-def test_monthly_summary_with_no_transactions_returns_zeros(db_session, seed_categories):
-    summary = get_monthly_summary(db_session, 2024, 4)
+def test_monthly_summary_with_no_transactions_returns_zeros(db_session, test_user, seed_categories):
+    summary = get_monthly_summary(db_session, test_user.id, 2024, 4)
     assert summary["total_income"] == 0.0
     assert summary["total_expenses"] == 0.0
     assert summary["net"] == 0.0
     assert summary["top_categories"] == []
+
+
+# ── get_monthly_trend ────────────────────────────────────────────────────────
+
+def test_monthly_trend_covers_trailing_months_oldest_first(db_session, test_user, seed_categories):
+    account = _make_account(db_session, test_user.id)
+    salary = seed_categories["Salary & Wages"]
+    food = seed_categories["Food & Dining"]
+
+    _make_txn(db_session, account, salary, date(2024, 2, 3), 500_000, TransactionType.credit)
+    _make_txn(db_session, account, food, date(2024, 4, 5), 40_000, TransactionType.debit)
+
+    trend = get_monthly_trend(db_session, test_user.id, 2024, 4, months=3)
+
+    periods = [t["period"] for t in trend]
+    assert periods == ["Feb 2024", "Mar 2024", "Apr 2024"]
+    assert trend[0]["total_income"] == 500_000.0
+    assert trend[1]["total_income"] == 0.0
+    assert trend[2]["total_expenses"] == 40_000.0
+
+
+def test_monthly_trend_handles_year_boundary(db_session, test_user):
+    trend = get_monthly_trend(db_session, test_user.id, 2024, 1, months=3)
+    periods = [t["period"] for t in trend]
+    assert periods == ["Nov 2023", "Dec 2023", "Jan 2024"]

@@ -20,8 +20,9 @@ from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.auth import get_current_user
 from app.core.database import get_db
-from app.models.models import Category, Transaction
+from app.models.models import Account, Category, Transaction, User
 from app.services.importer import import_csv, import_pdf
 from app.services.ai_engine import categorise_batch
 
@@ -61,20 +62,26 @@ class TransactionBulkPatch(BaseModel):
 
 # ── Import helpers ─────────────────────────────────────────────────────────────
 
-def _persist_transactions(raw_rows: list[dict], db: Session) -> tuple[int, int]:
+def _persist_transactions(raw_rows: list[dict], user_id: uuid.UUID, db: Session) -> tuple[int, int]:
     """
-    Bulk-insert raw transaction rows, skipping duplicates.
-    Returns (inserted_count, skipped_count).
+    Bulk-insert raw transaction rows, skipping duplicates (scoped to this
+    user — two different users can import statements that happen to produce
+    the same fingerprint without colliding). Returns (inserted_count, skipped_count).
     """
     inserted = skipped = 0
     for row in raw_rows:
-        existing = db.query(Transaction).filter_by(fingerprint=row["fingerprint"]).first()
+        existing = (
+            db.query(Transaction)
+            .filter_by(fingerprint=row["fingerprint"], user_id=user_id)
+            .first()
+        )
         if existing:
             skipped += 1
             continue
 
         txn = Transaction(
             id           = uuid.uuid4(),
+            user_id      = user_id,
             account_id   = uuid.UUID(row["account_id"]),
             date         = row["date"],
             description  = row["description"],
@@ -97,7 +104,7 @@ def _persist_transactions(raw_rows: list[dict], db: Session) -> tuple[int, int]:
     return inserted, skipped
 
 
-def _run_ai_categorisation(raw_rows: list[dict], db: Session) -> bool:
+def _run_ai_categorisation(raw_rows: list[dict], user_id: uuid.UUID, db: Session) -> bool:
     """
     Call the AI engine and write category + confidence back to the DB.
     Skips transactions whose fingerprint was already in the DB (already categorised).
@@ -109,7 +116,11 @@ def _run_ai_categorisation(raw_rows: list[dict], db: Session) -> bool:
     """
     # Fetch freshly inserted transactions using fingerprints
     fingerprints = [r["fingerprint"] for r in raw_rows]
-    txns = db.query(Transaction).filter(Transaction.fingerprint.in_(fingerprints)).all()
+    txns = (
+        db.query(Transaction)
+        .filter(Transaction.fingerprint.in_(fingerprints), Transaction.user_id == user_id)
+        .all()
+    )
 
     payload = [
         {"id": str(t.id), "description": t.description, "amount": str(t.amount), "type": t.type.value}
@@ -124,8 +135,8 @@ def _run_ai_categorisation(raw_rows: list[dict], db: Session) -> bool:
         logger.exception("AI categorisation failed; transactions remain uncategorised")
         return False
 
-    # Build a name→id lookup for categories
-    categories = {c.name: c for c in db.query(Category).all()}
+    # Build a name→id lookup for this user's own categories
+    categories = {c.name: c for c in db.query(Category).filter(Category.user_id == user_id).all()}
 
     txn_map = {str(t.id): t for t in txns}
     for suggestion in suggestions:
@@ -142,6 +153,13 @@ def _run_ai_categorisation(raw_rows: list[dict], db: Session) -> bool:
     return True
 
 
+def _get_owned_account(account_id: str, user_id: uuid.UUID, db: Session) -> Account:
+    account = db.query(Account).filter(Account.id == uuid.UUID(account_id), Account.user_id == user_id).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+    return account
+
+
 # ── Endpoints ──────────────────────────────────────────────────────────────────
 
 @router.post("/import/csv", summary="Import transactions from a CSV bank statement")
@@ -149,16 +167,19 @@ async def import_csv_file(
     account_id: str = Form(...),
     file:       UploadFile = File(...),
     auto_categorise: bool = Form(True),
+    user:       User = Depends(get_current_user),
     db:         Session = Depends(get_db),
 ):
+    _get_owned_account(account_id, user.id, db)
+
     contents = await file.read()
     try:
         rows = import_csv(contents, account_id)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
-    inserted, skipped = _persist_transactions(rows, db)
-    categorised = _run_ai_categorisation(rows, db) if auto_categorise else False
+    inserted, skipped = _persist_transactions(rows, user.id, db)
+    categorised = _run_ai_categorisation(rows, user.id, db) if auto_categorise else False
 
     return {
         "inserted": inserted,
@@ -173,15 +194,18 @@ async def import_pdf_file(
     account_id: str = Form(...),
     file:       UploadFile = File(...),
     auto_categorise: bool = Form(True),
+    user:       User = Depends(get_current_user),
     db:         Session = Depends(get_db),
 ):
+    _get_owned_account(account_id, user.id, db)
+
     contents = await file.read()
     rows = import_pdf(contents, account_id)
     if not rows:
         raise HTTPException(status_code=422, detail="No transactions could be extracted from this PDF.")
 
-    inserted, skipped = _persist_transactions(rows, db)
-    categorised = _run_ai_categorisation(rows, db) if auto_categorise else False
+    inserted, skipped = _persist_transactions(rows, user.id, db)
+    categorised = _run_ai_categorisation(rows, user.id, db) if auto_categorise else False
 
     return {
         "inserted": inserted,
@@ -201,13 +225,14 @@ def list_transactions(
     search:     Optional[str]  = Query(None, description="substring match on description"),
     limit:      int = Query(100, le=500),
     offset:     int = Query(0),
+    user:       User = Depends(get_current_user),
     db:         Session = Depends(get_db),
 ):
-    q = db.query(Transaction)
+    q = db.query(Transaction).filter(Transaction.user_id == user.id)
     if account_id:
         q = q.filter(Transaction.account_id == uuid.UUID(account_id))
     if category:
-        cat = db.query(Category).filter(Category.name.ilike(f"%{category}%")).first()
+        cat = db.query(Category).filter(Category.user_id == user.id, Category.name.ilike(f"%{category}%")).first()
         if cat:
             q = q.filter(Transaction.category_id == cat.id)
     if from_date:
@@ -240,15 +265,17 @@ def list_transactions(
 
 
 @router.patch("/bulk", summary="Apply a category to multiple transactions at once")
-def bulk_patch_transactions(body: TransactionBulkPatch, db: Session = Depends(get_db)):
-    cat = db.query(Category).filter(Category.name == body.category_name).first()
+def bulk_patch_transactions(
+    body: TransactionBulkPatch, user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    cat = db.query(Category).filter(Category.user_id == user.id, Category.name == body.category_name).first()
     if not cat:
         raise HTTPException(status_code=404, detail=f"Category '{body.category_name}' not found")
 
     ids = [uuid.UUID(tid) for tid in body.transaction_ids]
     updated = (
         db.query(Transaction)
-        .filter(Transaction.id.in_(ids))
+        .filter(Transaction.id.in_(ids), Transaction.user_id == user.id)
         .update({"category_id": cat.id, "is_confirmed": True}, synchronize_session=False)
     )
     db.commit()
@@ -259,14 +286,15 @@ def bulk_patch_transactions(body: TransactionBulkPatch, db: Session = Depends(ge
 def patch_transaction(
     txn_id: str,
     body:   TransactionPatch,
+    user:   User = Depends(get_current_user),
     db:     Session = Depends(get_db),
 ):
-    txn = db.query(Transaction).filter(Transaction.id == uuid.UUID(txn_id)).first()
+    txn = db.query(Transaction).filter(Transaction.id == uuid.UUID(txn_id), Transaction.user_id == user.id).first()
     if not txn:
         raise HTTPException(status_code=404, detail="Transaction not found")
 
     if body.category_name is not None:
-        cat = db.query(Category).filter(Category.name == body.category_name).first()
+        cat = db.query(Category).filter(Category.user_id == user.id, Category.name == body.category_name).first()
         if not cat:
             raise HTTPException(status_code=404, detail=f"Category '{body.category_name}' not found")
         txn.category_id = cat.id
@@ -283,15 +311,15 @@ def patch_transaction(
 
 
 @router.delete("/all", summary="Delete every transaction")
-def delete_all_transactions(db: Session = Depends(get_db)):
-    deleted = db.query(Transaction).delete()
+def delete_all_transactions(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    deleted = db.query(Transaction).filter(Transaction.user_id == user.id).delete()
     db.commit()
     return {"deleted": deleted}
 
 
 @router.delete("/{txn_id}", summary="Remove a transaction")
-def delete_transaction(txn_id: str, db: Session = Depends(get_db)):
-    txn = db.query(Transaction).filter(Transaction.id == uuid.UUID(txn_id)).first()
+def delete_transaction(txn_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    txn = db.query(Transaction).filter(Transaction.id == uuid.UUID(txn_id), Transaction.user_id == user.id).first()
     if not txn:
         raise HTTPException(status_code=404, detail="Transaction not found")
     db.delete(txn)

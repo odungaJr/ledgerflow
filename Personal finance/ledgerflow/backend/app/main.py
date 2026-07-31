@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.auth import get_current_user
 from app.core.database import engine, Base
-from app.routers import accounts, auth, categories, transactions, budgets, dashboard, income, assets, reports
+from app.routers import accounts, auth, categories, transactions, budgets, dashboard, income, assets, liabilities, reports
 
 
 @asynccontextmanager
@@ -53,6 +53,7 @@ app.include_router(transactions.router, dependencies=_require_auth)
 app.include_router(budgets.router, dependencies=_require_auth)
 app.include_router(income.router, dependencies=_require_auth)
 app.include_router(assets.router, dependencies=_require_auth)
+app.include_router(liabilities.router, dependencies=_require_auth)
 app.include_router(dashboard.router, dependencies=_require_auth)
 app.include_router(reports.router, dependencies=_require_auth)
 

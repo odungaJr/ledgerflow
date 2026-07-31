@@ -2,8 +2,9 @@
 Auth router
 ===========
 Endpoints:
-  GET  /auth/status            – whether a bootstrap account exists yet (public)
-  POST /auth/register          – create the (single) bootstrap account (public, once)
+  GET  /auth/status            – whether any account exists yet (public)
+  POST /auth/register          – create a new account, with its own private
+                                  data (public — registration is open)
   POST /auth/login              – exchange credentials for a session cookie (public)
   POST /auth/logout             – revoke the current session
   GET  /auth/me                 – current logged-in username
@@ -34,6 +35,7 @@ from app.core.auth import (
 )
 from app.core.database import get_db
 from app.models.models import Session as SessionModel, User
+from app.services.category_engine import seed_default_categories
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -48,27 +50,33 @@ class PasswordChange(BaseModel):
     new_password: str
 
 
-@router.get("/status", summary="Whether the bootstrap account has been created")
+@router.get("/status", summary="Whether any account exists yet")
 def auth_status(db: Session = Depends(get_db)):
+    # Used by the frontend to decide whether to default a brand-new install
+    # straight to the register form — registration itself stays open beyond
+    # that, this isn't a gate.
     return {"initialized": db.query(User).first() is not None}
 
 
-@router.post("/register", status_code=201, summary="Create the bootstrap account (once)")
+@router.post("/register", status_code=201, summary="Create a new account")
 def register(body: Credentials, response: Response, db: Session = Depends(get_db)):
-    if db.query(User).first() is not None:
-        raise HTTPException(status_code=409, detail="An account already exists — log in instead")
-
     if not body.username.strip() or len(body.password) < 8:
         raise HTTPException(status_code=422, detail="Username is required and password must be at least 8 characters")
 
+    username = body.username.strip()
+    if db.query(User).filter(User.username == username).first() is not None:
+        raise HTTPException(status_code=409, detail="That username is already taken")
+
     user = User(
         id            = uuid.uuid4(),
-        username      = body.username.strip(),
+        username      = username,
         password_hash = hash_password(body.password),
     )
     db.add(user)
     db.commit()
     db.refresh(user)
+
+    seed_default_categories(db, user.id)
 
     token = create_session(db, user)
     set_session_cookie(response, token)

@@ -58,17 +58,17 @@ def test_delete_unused_custom_category_succeeds(client):
     assert "Pet Care" not in remaining
 
 
-def test_delete_category_in_use_is_blocked(client, db_session):
+def test_delete_category_in_use_is_blocked(client, db_session, test_user):
     import uuid
     from datetime import date
     from app.models.models import Account, Transaction, TransactionType
 
     created = client.post("/categories", json={"name": "Pet Care"}).json()
-    account = Account(id=uuid.uuid4(), name="Test Account", bank="CRDB")
+    account = Account(id=uuid.uuid4(), user_id=test_user.id, name="Test Account", bank="CRDB")
     db_session.add(account)
     db_session.commit()
     txn = Transaction(
-        id=uuid.uuid4(), account_id=account.id, category_id=uuid.UUID(created["id"]),
+        id=uuid.uuid4(), user_id=test_user.id, account_id=account.id, category_id=uuid.UUID(created["id"]),
         date=date(2026, 7, 1), description="VET BILL", amount=10000,
         type=TransactionType.debit, fingerprint=str(uuid.uuid4()),
     )
