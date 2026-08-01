@@ -1,5 +1,7 @@
 # LedgerFlow
 
+[![Backend tests](https://github.com/odungaJr/ledgerflow/actions/workflows/backend-tests.yml/badge.svg)](https://github.com/odungaJr/ledgerflow/actions/workflows/backend-tests.yml)
+
 A personal finance tracker with AI-assisted categorisation, budgets, income
 tracking, assets and liabilities, and a dashboard that ties it all together.
 Multi-tenant — each registered user gets fully private data.
