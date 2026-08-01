@@ -8,7 +8,7 @@ Adds a `user_id` owner column to every domain table (accounts, categories,
 transactions, budgets, income_entries, assets, asset_values, liabilities,
 liability_values) so each registered user's data is fully private instead of
 one shared global dataset. Existing rows are backfilled to whichever user
-already exists (there is exactly one, "moses", pre-migration — this app was
+already exists (there is exactly one, pre-migration — this app was
 single-tenant until now).
 
 Also fixes two constraints that were global and would otherwise let one

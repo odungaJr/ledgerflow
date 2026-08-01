@@ -39,10 +39,11 @@ services:
       backend:
         condition: service_healthy
 
-  # Gates both frontend and backend behind a single HTTP Basic Auth login and
-  # a single public port. /api/* is routed to the backend (prefix stripped),
-  # everything else to the frontend — same-origin from the browser's point of
-  # view, so no CORS or duplicate-login issues.
+  # Single public entry point for both frontend and backend. /api/* is
+  # routed to the backend (prefix stripped), everything else to the
+  # frontend — same-origin from the browser's point of view, so no CORS or
+  # duplicate-login issues. Auth itself is app-level (see backend/app/core/auth.py),
+  # not handled by Caddy.
   caddy:
     image: caddy:2-alpine
     ports:
