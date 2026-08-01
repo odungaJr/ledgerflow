@@ -9,6 +9,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.core.auth import get_current_user
 from app.core.database import Base, get_db
+from app.core.rate_limit import reset_rate_limits
 from app.models.models import Category, User
 
 # Header used to pick which fake identity a request runs as. Needed because
@@ -19,6 +20,15 @@ from app.models.models import Category, User
 # instead means the override itself is identity-agnostic; each TestClient
 # just sends its own default header.
 _TEST_USER_HEADER = "x-test-user-id"
+
+
+@pytest.fixture(autouse=True)
+def _clear_rate_limits():
+    """The rate-limit buckets in app.core.rate_limit live at module scope for
+    the whole test process (not per-request), so without this every test
+    would inherit whatever count the previous test left behind."""
+    reset_rate_limits()
+    yield
 
 
 @pytest.fixture()

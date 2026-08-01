@@ -1,6 +1,6 @@
 # LedgerFlow — Status
 
-**Last updated:** 2026-08-01
+**Last updated:** 2026-08-01 (rate limiting + CI)
 
 For the full "why" behind any of these — architecture decisions, tradeoffs,
 things fixed and why they broke — that detail lives in `RECAP.md` (kept
@@ -11,7 +11,7 @@ local, not in this repo).
 ## Current status
 
 Live locally via Docker (`http://localhost`), multi-tenant (open
-registration, every account's data is fully private), 177 backend tests
+registration, every account's data is fully private), 179 backend tests
 passing. Actively developed.
 
 ## Known blockers
@@ -23,6 +23,9 @@ passing. Actively developed.
 
 ## Changelog
 
+- Added per-IP rate limiting on `/auth/login` (10/min) and `/auth/register`
+  (5/min), on top of the existing per-account lockout; added a GitHub
+  Actions workflow that runs the backend test suite on every push/PR
 - Re-verified multi-tenant isolation with a second live test account
   (created, checked, deleted cleanly — cascade delete left no orphaned rows)
 - Compacted this changelog from a dense per-change log into short bullets;

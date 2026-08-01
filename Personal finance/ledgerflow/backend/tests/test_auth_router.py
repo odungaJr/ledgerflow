@@ -171,3 +171,28 @@ def test_change_password_succeeds_and_new_password_works(unauthenticated_client)
     unauthenticated_client.post("/auth/logout")
     resp = unauthenticated_client.post("/auth/login", json={"username": "moses", "password": "new-password-123"})
     assert resp.status_code == 200
+
+
+def test_login_is_rate_limited_per_ip(unauthenticated_client):
+    unauthenticated_client.post("/auth/register", json={"username": "moses", "password": "correct-horse"})
+    unauthenticated_client.post("/auth/logout")
+
+    # First 10 requests in the window go through to the normal auth logic
+    # (account lockout kicks in partway through and starts returning 423
+    # instead of 401 — either is fine here, this test is about the 11th
+    # request getting rate-limited, not about lockout behaviour).
+    for _ in range(10):
+        resp = unauthenticated_client.post("/auth/login", json={"username": "moses", "password": "wrong"})
+        assert resp.status_code in (401, 423)
+
+    resp = unauthenticated_client.post("/auth/login", json={"username": "moses", "password": "wrong"})
+    assert resp.status_code == 429
+
+
+def test_register_is_rate_limited_per_ip(unauthenticated_client):
+    for i in range(5):
+        resp = unauthenticated_client.post("/auth/register", json={"username": f"user{i}", "password": "correct-horse"})
+        assert resp.status_code == 201
+
+    resp = unauthenticated_client.post("/auth/register", json={"username": "user5", "password": "correct-horse"})
+    assert resp.status_code == 429

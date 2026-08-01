@@ -34,6 +34,7 @@ from app.core.auth import (
     _as_aware_utc,
 )
 from app.core.database import get_db
+from app.core.rate_limit import rate_limit
 from app.models.models import Session as SessionModel, User
 from app.services.category_engine import seed_default_categories
 
@@ -58,7 +59,12 @@ def auth_status(db: Session = Depends(get_db)):
     return {"initialized": db.query(User).first() is not None}
 
 
-@router.post("/register", status_code=201, summary="Create a new account")
+@router.post(
+    "/register",
+    status_code=201,
+    summary="Create a new account",
+    dependencies=[Depends(rate_limit(5))],
+)
 def register(body: Credentials, response: Response, db: Session = Depends(get_db)):
     if not body.username.strip() or len(body.password) < 8:
         raise HTTPException(status_code=422, detail="Username is required and password must be at least 8 characters")
@@ -83,7 +89,11 @@ def register(body: Credentials, response: Response, db: Session = Depends(get_db
     return {"username": user.username}
 
 
-@router.post("/login", summary="Log in with username and password")
+@router.post(
+    "/login",
+    summary="Log in with username and password",
+    dependencies=[Depends(rate_limit(10))],
+)
 def login(body: Credentials, response: Response, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == body.username.strip()).first()
 
