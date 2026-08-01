@@ -1,6 +1,6 @@
 # LedgerFlow — Status
 
-**Last updated:** 2026-07-31
+**Last updated:** 2026-08-01
 
 For the full "why" behind any of these — architecture decisions, tradeoffs,
 things fixed and why they broke — that detail lives in `RECAP.md` (kept
@@ -23,6 +23,12 @@ passing. Actively developed.
 
 ## Changelog
 
+- Re-verified multi-tenant isolation with a second live test account
+  (created, checked, deleted cleanly — cascade delete left no orphaned rows)
+- Compacted this changelog from a dense per-change log into short bullets;
+  the detailed version now lives only in `RECAP.md`
+- Added a project `README.md`; scrubbed a stray personal reference from a
+  migration docstring and fixed a stale `docker-compose.yml` comment
 - Multi-tenant data isolation — every registered user now gets fully
   private accounts, transactions, budgets, income, assets, liabilities, and
   categories, instead of one shared dataset. Verified live with a real
