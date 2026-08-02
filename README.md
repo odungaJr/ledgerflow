@@ -33,8 +33,9 @@ Multi-tenant — each registered user gets fully private data.
 - **Backend:** FastAPI, SQLAlchemy, PostgreSQL, Alembic (Python 3.11)
 - **Frontend:** Next.js 16, React 19, TypeScript, plain CSS — client-rendered,
   calls the backend API directly
-- **AI:** Anthropic Claude — Haiku for categorisation/anomaly detection,
-  Sonnet for narrative insights
+- **AI:** Local Ollama model (`qwen2.5:7b-instruct` by default) — free,
+  runs on-device, no API key or billing — for categorisation, anomaly
+  detection, and narrative insights
 - **Deploy:** Docker Compose (Postgres + FastAPI + Next.js + Caddy reverse
   proxy)
 
@@ -45,9 +46,13 @@ Requires Docker.
 ```bash
 cd "Personal finance/ledgerflow"
 cp .env.example .env
-# fill in ANTHROPIC_API_KEY in .env
 docker compose up -d --build
 ```
+
+AI features (categorisation, anomaly detection, insights) need
+[Ollama](https://ollama.com) running natively on the host — `brew install
+ollama && brew services start ollama && ollama pull qwen2.5:7b-instruct`.
+Without it, those features just fail soft; everything else works fine.
 
 The app is then available at `http://localhost`. First visit shows a
 "create your account" screen — set a username and password to get started.

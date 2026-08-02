@@ -1,6 +1,6 @@
 # LedgerFlow — Status
 
-**Last updated:** 2026-08-01 (rate limiting + CI)
+**Last updated:** 2026-08-02 (local AI via Ollama)
 
 For the full "why" behind any of these — architecture decisions, tradeoffs,
 things fixed and why they broke — that detail lives in `RECAP.md` (kept
@@ -16,13 +16,16 @@ passing. Actively developed.
 
 ## Known blockers
 
-- Anthropic account needs billing added before AI categorisation/insights
-  can be verified end-to-end (the graceful-failure path works; the happy
-  path is still untested for real)
 - No public hosting yet — local only, no domain/HTTPS
 
 ## Changelog
 
+- Replaced Anthropic Claude with a free, local Ollama model
+  (`qwen2.5:7b-instruct`) for all AI features — categorisation, anomaly
+  detection, and insights. Removes the Anthropic billing blocker entirely
+  (no API key, no cost) and verified live end-to-end for the first time
+  (categorisation, anomaly detection, and the trends/insights narrative all
+  producing correct real output, not just the graceful-failure path)
 - Added per-IP rate limiting on `/auth/login` (10/min) and `/auth/register`
   (5/min), on top of the existing per-account lockout; added a GitHub
   Actions workflow that runs the backend test suite on every push/PR

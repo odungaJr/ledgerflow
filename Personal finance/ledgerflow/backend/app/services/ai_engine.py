@@ -1,7 +1,7 @@
 """
-AI Engine — powered by Anthropic Claude
-========================================
-Two public functions:
+AI Engine — powered by a local Ollama model
+============================================
+Three public functions:
 
   categorise_batch(transactions)
       Sends up to 50 transactions in a single prompt and returns a
@@ -11,18 +11,29 @@ Two public functions:
       Produces a natural-language financial health report: spending
       patterns, anomalies, and actionable suggestions.
 
+  detect_anomalies(transactions)
+      Flags transactions that look unusual (outlier amounts, odd timing,
+      suspicious descriptions).
+
+All three call a locally-running Ollama server instead of a paid API —
+no billing, no API key, and financial data never leaves the machine.
+OLLAMA_BASE_URL defaults to the native host install (localhost); when the
+backend itself runs inside Docker it's overridden to
+`http://host.docker.internal:11434` (see docker-compose.yml) since
+"localhost" inside a container means the container, not the Mac host.
+
 Both functions are designed to be called from the routers layer after
 transactions are persisted to the database.
 """
 import json
 import os
+import urllib.request
 from decimal import Decimal
-
-import anthropic
 
 # ── Client ─────────────────────────────────────────────────────────────────────
 
-_client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:7b-instruct")
 
 # Must match the seeded category names in the migration exactly
 VALID_CATEGORIES = [
@@ -32,6 +43,56 @@ VALID_CATEGORIES = [
 ]
 
 
+def _ollama_chat(prompt: str, *, json_mode: bool = False, timeout: int = 120) -> str:
+    """Send a single-turn prompt to the local Ollama server, return the reply text.
+
+    Raises urllib.error.URLError (e.g. connection refused if Ollama isn't
+    running) or TimeoutError on a slow response — callers already treat any
+    AI-engine exception as a soft failure, so these aren't caught here.
+    """
+    body = {
+        "model": OLLAMA_MODEL,
+        "messages": [{"role": "user", "content": prompt}],
+        "stream": False,
+    }
+    if json_mode:
+        body["format"] = "json"  # constrains generation to valid JSON
+
+    request = urllib.request.Request(
+        f"{OLLAMA_BASE_URL}/api/chat",
+        data=json.dumps(body).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        parsed = json.loads(response.read())
+    return parsed["message"]["content"].strip()
+
+
+def _strip_code_fence(raw: str) -> str:
+    """Some models wrap JSON output in ``` fences despite instructions not to."""
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+    return raw
+
+
+def _coerce_to_list(parsed) -> list:
+    """A requested top-level JSON array sometimes comes back wrapped in an
+    object instead (e.g. {"transactions": [...]}) despite explicit
+    instructions not to — observed with qwen2.5 even under a strict array
+    JSON schema. Unwrap the first list value found rather than fighting the
+    model's own instinct to name things."""
+    if isinstance(parsed, list):
+        return parsed
+    if isinstance(parsed, dict):
+        for value in parsed.values():
+            if isinstance(value, list):
+                return value
+    return []
+
+
 # ── Categorisation ─────────────────────────────────────────────────────────────
 
 def categorise_batch(transactions: list[dict]) -> list[dict]:
@@ -39,7 +100,7 @@ def categorise_batch(transactions: list[dict]) -> list[dict]:
     Given a list of transaction dicts (id, description, amount, type),
     return a list of {id, category, confidence} dicts.
 
-    Batches up to 50 items per API call to stay within token limits.
+    Batches up to 50 items per call to stay within a reasonable prompt size.
     """
     results = []
     batch_size = 50
@@ -52,7 +113,7 @@ def categorise_batch(transactions: list[dict]) -> list[dict]:
 
 
 def _categorise_single_batch(batch: list[dict]) -> list[dict]:
-    """Send one batch to Claude and parse the JSON response."""
+    """Send one batch to the model and parse the JSON response."""
     lines = "\n".join(
         f"{idx+1}. [{t['type'].upper()}] {t['description']} — {t['amount']}"
         for idx, t in enumerate(batch)
@@ -76,22 +137,10 @@ Return ONLY a JSON array, one object per transaction, in order:
 Transactions:
 {lines}"""
 
-    message = _client.messages.create(
-        model="claude-haiku-4-5-20251001",   # fast + cheap for bulk classification
-        max_tokens=1024,
-        messages=[{"role": "user", "content": prompt}],
-    )
-
-    raw = message.content[0].text.strip()
-
-    # Strip markdown code fences if Claude wraps the JSON
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
+    raw = _strip_code_fence(_ollama_chat(prompt, json_mode=True))
 
     try:
-        parsed = json.loads(raw)
+        parsed = _coerce_to_list(json.loads(raw))
     except json.JSONDecodeError:
         # Malformed response — skip this batch rather than failing the whole import.
         return []
@@ -149,20 +198,14 @@ Write a concise, friendly financial insights report (200–300 words). Structure
 
 Write in plain English. Be specific with numbers. Avoid generic advice."""
 
-    message = _client.messages.create(
-        model="claude-sonnet-5",    # stronger model for nuanced narrative
-        max_tokens=600,
-        messages=[{"role": "user", "content": prompt}],
-    )
-
-    return message.content[0].text.strip()
+    return _ollama_chat(prompt)
 
 
 # ── Anomaly detection helper ───────────────────────────────────────────────────
 
 def detect_anomalies(transactions: list[dict]) -> list[dict]:
     """
-    Ask Claude to flag transactions that look unusual compared to the rest
+    Ask the model to flag transactions that look unusual compared to the rest
     of the batch (e.g. outlier amounts, odd timing, suspicious descriptions).
 
     Returns a list of {transaction_id, reason} dicts.
@@ -191,19 +234,9 @@ If nothing is suspicious, return: []
 Transactions:
 {lines}"""
 
-    message = _client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=512,
-        messages=[{"role": "user", "content": prompt}],
-    )
-
-    raw = message.content[0].text.strip()
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
+    raw = _strip_code_fence(_ollama_chat(prompt, json_mode=True))
 
     try:
-        return json.loads(raw)
+        return _coerce_to_list(json.loads(raw))
     except json.JSONDecodeError:
         return []
