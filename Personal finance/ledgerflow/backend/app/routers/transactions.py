@@ -388,6 +388,10 @@ def patch_transaction(
 @router.delete("/all", summary="Delete every transaction")
 def delete_all_transactions(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     deleted = db.query(Transaction).filter(Transaction.user_id == user.id).delete()
+    # Also forget which statement files were already imported — otherwise a
+    # full wipe followed by re-uploading the same file would still get
+    # rejected as a duplicate, even though nothing from it exists anymore.
+    db.query(ImportedStatement).filter(ImportedStatement.user_id == user.id).delete()
     db.commit()
     return {"deleted": deleted}
 

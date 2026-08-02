@@ -1,6 +1,6 @@
 # LedgerFlow — Status
 
-**Last updated:** 2026-08-02 (multi-file import, dedupe, PDF reports)
+**Last updated:** 2026-08-02 (fix: clear-all-transactions leftover dedupe bug)
 
 For the full "why" behind any of these — architecture decisions, tradeoffs,
 things fixed and why they broke — that detail lives in `RECAP.md` (kept
@@ -11,7 +11,7 @@ local, not in this repo).
 ## Current status
 
 Live locally via Docker (`http://localhost`), multi-tenant (open
-registration, every account's data is fully private), 186 backend tests
+registration, every account's data is fully private), 187 backend tests
 passing. Actively developed.
 
 ## Known blockers
@@ -20,6 +20,11 @@ passing. Actively developed.
 
 ## Changelog
 
+- Fixed a real bug hit live: "Clear all transactions" only deleted
+  `transactions`, not the new `imported_statements` records — so re-uploading
+  a statement after a full wipe was wrongly rejected as a duplicate. The wipe
+  now clears both; also cleaned up the stale leftover records this had
+  already created on the real account
 - Transactions table now shows which account each row belongs to; statement
   import accepts multiple files at once with a live progress meter (file X
   of N, per-file Imported/Duplicate/Failed status); re-uploading the exact

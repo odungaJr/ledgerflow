@@ -238,6 +238,26 @@ def test_delete_all_transactions(client):
     assert client.get("/transactions").json() == []
 
 
+def test_reuploading_a_statement_works_again_after_a_full_wipe(client):
+    account_id = _make_account(client)
+    client.post(
+        "/transactions/import/csv",
+        data={"account_id": account_id, "auto_categorise": "false"},
+        files={"file": ("statement.csv", io.BytesIO(CSV_BYTES), "text/csv")},
+    )
+
+    client.delete("/transactions/all")
+
+    resp = client.post(
+        "/transactions/import/csv",
+        data={"account_id": account_id, "auto_categorise": "false"},
+        files={"file": ("statement.csv", io.BytesIO(CSV_BYTES), "text/csv")},
+    )
+    body = resp.json()
+    assert body["duplicate_statement"] is False
+    assert body["inserted"] == 1
+
+
 def test_delete_all_transactions_when_none_exist(client):
     resp = client.delete("/transactions/all")
     assert resp.status_code == 200
