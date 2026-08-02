@@ -329,3 +329,19 @@ export const getDashboardInsights = (year?: number, month?: number) => {
 
 export const getPnl = (fromDate: string, toDate: string) =>
   request<PnlStatement>(`/reports/pnl?from_date=${fromDate}&to_date=${toDate}`);
+
+export async function downloadPnlPdf(fromDate: string, toDate: string): Promise<void> {
+  const res = await fetch(`${API_URL}/reports/pnl/pdf?from_date=${fromDate}&to_date=${toDate}`, {
+    credentials: "include",
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await extractErrorDetail(res));
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `pnl_${fromDate}_to_${toDate}.pdf`;
+  a.click();
+  URL.revokeObjectURL(url);
+}

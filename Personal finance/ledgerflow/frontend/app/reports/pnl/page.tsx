@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ApiError, getPnl } from "@/lib/api";
+import { ApiError, downloadPnlPdf, getPnl } from "@/lib/api";
 import { dateToIso, todayIso } from "@/lib/date";
 import { formatMoney } from "@/lib/format";
 import type { PnlStatement } from "@/lib/types";
@@ -41,6 +41,8 @@ export default function PnlPage() {
   const [statement, setStatement] = useState<PnlStatement | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
 
   function applyPreset(key: PresetKey) {
     setPreset(key);
@@ -78,15 +80,34 @@ export default function PnlPage() {
     URL.revokeObjectURL(url);
   }
 
+  async function handleExportPdf() {
+    if (!statement) return;
+    setExportingPdf(true);
+    setPdfError(null);
+    try {
+      await downloadPnlPdf(statement.from_date, statement.to_date);
+    } catch (e) {
+      setPdfError(e instanceof ApiError ? e.message : "Failed to generate PDF");
+    } finally {
+      setExportingPdf(false);
+    }
+  }
+
   return (
     <main className="page">
       <div className="container">
         <div className="pageHeader">
           <h1>P&amp;L Statement</h1>
-          <button className="btn btnSecondary btnSmall" onClick={handleExportCsv} disabled={!statement}>
-            Export CSV
-          </button>
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <button className="btn btnSecondary btnSmall" onClick={handleExportCsv} disabled={!statement}>
+              Export CSV
+            </button>
+            <button className="btn btnSmall" onClick={handleExportPdf} disabled={!statement || exportingPdf}>
+              {exportingPdf ? "Generating…" : "Export PDF"}
+            </button>
+          </div>
         </div>
+        {pdfError && <div className="alert error">{pdfError}</div>}
 
         <div className="card">
           <div className="formInline">

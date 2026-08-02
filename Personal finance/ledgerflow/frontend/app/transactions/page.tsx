@@ -15,9 +15,19 @@ import {
   patchTransaction,
 } from "@/lib/api";
 import { formatDate, formatMoney } from "@/lib/format";
-import type { Account, Category, CategorisePendingResult, ImportResult, Transaction } from "@/lib/types";
+import type { Account, Category, CategorisePendingResult, Transaction } from "@/lib/types";
 
 const PAGE_SIZE = 50;
+
+type ImportFileOutcome = {
+  name: string;
+  status: "success" | "duplicate" | "error";
+  detail: string;
+};
+
+function accountLabel(accounts: Account[], accountId: string): string {
+  return accounts.find((a) => a.id === accountId)?.name ?? "—";
+}
 
 export default function TransactionsPage() {
   const searchParams = useSearchParams();
@@ -43,11 +53,13 @@ export default function TransactionsPage() {
   const [clearingAll, setClearingAll] = useState(false);
 
   const [importAccountId, setImportAccountId] = useState("");
-  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importFiles, setImportFiles] = useState<File[]>([]);
+  const [fileInputKey, setFileInputKey] = useState(0);
   const [autoCategorise, setAutoCategorise] = useState(true);
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
-  const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [importProgress, setImportProgress] = useState<{ completed: number; total: number } | null>(null);
+  const [importFileResults, setImportFileResults] = useState<ImportFileOutcome[]>([]);
 
   const [categorising, setCategorising] = useState(false);
   const [categoriseError, setCategoriseError] = useState<string | null>(null);
@@ -110,28 +122,53 @@ export default function TransactionsPage() {
 
   async function handleImport(e: FormEvent) {
     e.preventDefault();
-    if (!importAccountId || !importFile) {
-      setImportError("Choose an account and a CSV or PDF file.");
+    if (!importAccountId || importFiles.length === 0) {
+      setImportError("Choose an account and at least one CSV or PDF file.");
       return;
     }
-    const fileType = importFile.name.toLowerCase().endsWith(".pdf") ? "pdf" : "csv";
     setImporting(true);
     setImportError(null);
-    setImportResult(null);
-    try {
-      const result = await importStatement(importAccountId, importFile, fileType, autoCategorise);
-      setImportResult(result);
-      setImportFile(null);
-      loadTransactions();
-    } catch (e) {
-      setImportError(e instanceof ApiError ? e.message : "Import failed");
-    } finally {
-      setImporting(false);
+    setImportFileResults([]);
+    setImportProgress({ completed: 0, total: importFiles.length });
+
+    const results: ImportFileOutcome[] = [];
+    for (const file of importFiles) {
+      const fileType = file.name.toLowerCase().endsWith(".pdf") ? "pdf" : "csv";
+      try {
+        const result = await importStatement(importAccountId, file, fileType, autoCategorise);
+        if (result.duplicate_statement) {
+          results.push({ name: file.name, status: "duplicate", detail: "Already imported — skipped." });
+        } else {
+          const parts = [`${result.inserted} imported`];
+          if (result.skipped > 0) {
+            parts.push(`${result.skipped} duplicate row${result.skipped === 1 ? "" : "s"} skipped`);
+          }
+          if (autoCategorise) {
+            parts.push(result.categorised ? "AI categorised" : "AI categorisation unavailable");
+          }
+          results.push({ name: file.name, status: "success", detail: parts.join(", ") });
+        }
+      } catch (err) {
+        results.push({
+          name: file.name,
+          status: "error",
+          detail: err instanceof ApiError ? err.message : "Import failed",
+        });
+      }
+      // Update after each file so the progress bar and per-file list move
+      // along live instead of jumping all at once at the end.
+      setImportFileResults([...results]);
+      setImportProgress((prev) => (prev ? { ...prev, completed: prev.completed + 1 } : prev));
     }
+
+    setImportFiles([]);
+    setFileInputKey((k) => k + 1);
+    setImporting(false);
+    loadTransactions();
   }
 
   function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
-    setImportFile(e.target.files?.[0] ?? null);
+    setImportFiles(Array.from(e.target.files ?? []));
   }
 
   async function handleCategorisePending() {
@@ -257,11 +294,23 @@ export default function TransactionsPage() {
               )}
             </div>
             <div className="formRow">
-              <label htmlFor="import-file">Statement file (CSV or PDF)</label>
-              <input id="import-file" type="file" accept=".csv,.pdf" onChange={handleFileChange} />
+              <label htmlFor="import-file">Statement file(s) (CSV or PDF)</label>
+              <input
+                key={fileInputKey}
+                id="import-file"
+                type="file"
+                accept=".csv,.pdf"
+                multiple
+                onChange={handleFileChange}
+              />
+              {importFiles.length > 0 && (
+                <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
+                  {importFiles.length} file{importFiles.length === 1 ? "" : "s"} selected
+                </span>
+              )}
             </div>
             <button className="btn" type="submit" disabled={importing || accounts.length === 0}>
-              {importing ? "Importing…" : "Import statement"}
+              {importing ? "Importing…" : "Import statement(s)"}
             </button>
           </div>
 
@@ -279,14 +328,44 @@ export default function TransactionsPage() {
           </div>
 
           {importError && <div className="alert error">{importError}</div>}
-          {importResult && (
-            <div className="alert info">
-              Imported {importResult.inserted} transaction{importResult.inserted === 1 ? "" : "s"}
-              {importResult.skipped > 0 ? ` (${importResult.skipped} duplicate skipped)` : ""}.{" "}
-              {importResult.categorised
-                ? "AI categorisation ran."
-                : "AI categorisation didn't run — categorise manually below."}
+
+          {importProgress && (
+            <div style={{ marginTop: "0.75rem" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8rem", marginBottom: "0.3rem" }}>
+                <span>
+                  {importing
+                    ? `Importing ${importProgress.completed + 1} of ${importProgress.total}…`
+                    : `Done — ${importProgress.completed} of ${importProgress.total} processed`}
+                </span>
+                <span>{Math.round((importProgress.completed / importProgress.total) * 100)}%</span>
+              </div>
+              <div style={{ height: "8px", borderRadius: "4px", background: "var(--border)", overflow: "hidden" }}>
+                <div
+                  style={{
+                    height: "100%",
+                    width: `${(importProgress.completed / importProgress.total) * 100}%`,
+                    background: "var(--primary)",
+                    transition: "width 0.2s ease",
+                  }}
+                />
+              </div>
             </div>
+          )}
+
+          {importFileResults.length > 0 && (
+            <ul style={{ listStyle: "none", padding: 0, marginTop: "0.75rem", display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+              {importFileResults.map((r, i) => (
+                <li key={`${r.name}-${i}`} style={{ fontSize: "0.85rem", display: "flex", gap: "0.5rem", alignItems: "baseline" }}>
+                  <span
+                    className={`badge ${r.status === "success" ? "ok" : r.status === "duplicate" ? "neutral" : "danger"}`}
+                  >
+                    {r.status === "success" ? "Imported" : r.status === "duplicate" ? "Duplicate" : "Failed"}
+                  </span>
+                  <span style={{ fontWeight: 600 }}>{r.name}</span>
+                  <span style={{ color: "var(--text-muted)" }}>{r.detail}</span>
+                </li>
+              ))}
+            </ul>
           )}
         </form>
 
@@ -439,6 +518,7 @@ export default function TransactionsPage() {
                       </th>
                       <th>Date</th>
                       <th>Description</th>
+                      <th>Account</th>
                       <th>Amount</th>
                       <th>Category</th>
                       <th>Notes</th>
@@ -459,6 +539,7 @@ export default function TransactionsPage() {
                         </td>
                         <td data-label="Date">{formatDate(txn.date)}</td>
                         <td data-label="Description">{txn.description}</td>
+                        <td data-label="Account">{accountLabel(accounts, txn.account_id)}</td>
                         <td data-label="Amount">
                           <span style={{ color: txn.type === "credit" ? "var(--success)" : "var(--danger)" }}>
                             {txn.type === "credit" ? "+" : "-"}

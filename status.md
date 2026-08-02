@@ -1,6 +1,6 @@
 # LedgerFlow — Status
 
-**Last updated:** 2026-08-02 (scan & categorise button)
+**Last updated:** 2026-08-02 (multi-file import, dedupe, PDF reports)
 
 For the full "why" behind any of these — architecture decisions, tradeoffs,
 things fixed and why they broke — that detail lives in `RECAP.md` (kept
@@ -11,7 +11,7 @@ local, not in this repo).
 ## Current status
 
 Live locally via Docker (`http://localhost`), multi-tenant (open
-registration, every account's data is fully private), 183 backend tests
+registration, every account's data is fully private), 186 backend tests
 passing. Actively developed.
 
 ## Known blockers
@@ -20,6 +20,14 @@ passing. Actively developed.
 
 ## Changelog
 
+- Transactions table now shows which account each row belongs to; statement
+  import accepts multiple files at once with a live progress meter (file X
+  of N, per-file Imported/Duplicate/Failed status); re-uploading the exact
+  same statement file to the same account is now detected and skipped
+  before it's even parsed (new `imported_statements` table, migration 008);
+  the P&L report can now be exported as a formatted PDF (via reportlab) in
+  addition to the existing CSV export, generated only when the button is
+  clicked
 - Added a "Scan & categorise" button on the Transactions page — runs AI
   categorisation on demand over every currently-uncategorised transaction
   across all accounts (`POST /transactions/categorise-pending`), not just

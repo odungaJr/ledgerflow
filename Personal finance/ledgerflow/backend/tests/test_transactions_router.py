@@ -51,6 +51,77 @@ def test_import_runs_ai_by_default(client, monkeypatch, seed_categories):
     assert txns[0]["category"] == "Transport"
 
 
+def test_reuploading_the_same_statement_is_detected_and_skipped(client):
+    account_id = _make_account(client)
+
+    first = client.post(
+        "/transactions/import/csv",
+        data={"account_id": account_id, "auto_categorise": "false"},
+        files={"file": ("statement.csv", io.BytesIO(CSV_BYTES), "text/csv")},
+    )
+    assert first.json()["duplicate_statement"] is False
+    assert first.json()["inserted"] == 1
+
+    second = client.post(
+        "/transactions/import/csv",
+        data={"account_id": account_id, "auto_categorise": "false"},
+        files={"file": ("statement.csv", io.BytesIO(CSV_BYTES), "text/csv")},
+    )
+    body = second.json()
+    assert body == {
+        "inserted": 0, "skipped": 0, "total_parsed": 0, "categorised": False,
+        "duplicate_statement": True,
+    }
+
+    # Only the one transaction from the first upload exists — the second
+    # upload never even reached the parser.
+    assert len(client.get("/transactions").json()) == 1
+
+
+def test_a_different_statement_to_the_same_account_still_imports_normally(client):
+    account_id = _make_account(client)
+
+    client.post(
+        "/transactions/import/csv",
+        data={"account_id": account_id, "auto_categorise": "false"},
+        files={"file": ("statement.csv", io.BytesIO(CSV_BYTES), "text/csv")},
+    )
+
+    other_csv = (
+        b"Date,Description,Debit,Credit,Balance\n"
+        b"16/04/2024,SUPERMARKET,20000.00,,2320500.00\n"
+    )
+    resp = client.post(
+        "/transactions/import/csv",
+        data={"account_id": account_id, "auto_categorise": "false"},
+        files={"file": ("statement2.csv", io.BytesIO(other_csv), "text/csv")},
+    )
+    body = resp.json()
+    assert body["duplicate_statement"] is False
+    assert body["inserted"] == 1
+    assert len(client.get("/transactions").json()) == 2
+
+
+def test_same_statement_uploaded_to_a_different_account_is_not_flagged_duplicate(client):
+    account_a = _make_account(client)
+    account_b = client.post("/accounts", json={"name": "Second Account", "bank": "NMB"}).json()["id"]
+
+    client.post(
+        "/transactions/import/csv",
+        data={"account_id": account_a, "auto_categorise": "false"},
+        files={"file": ("statement.csv", io.BytesIO(CSV_BYTES), "text/csv")},
+    )
+    resp = client.post(
+        "/transactions/import/csv",
+        data={"account_id": account_b, "auto_categorise": "false"},
+        files={"file": ("statement.csv", io.BytesIO(CSV_BYTES), "text/csv")},
+    )
+    body = resp.json()
+    assert body["duplicate_statement"] is False
+    assert body["inserted"] == 1
+    assert len(client.get("/transactions").json()) == 2
+
+
 def test_categorise_pending_reports_no_transactions_when_nothing_uncategorised(client):
     resp = client.post("/transactions/categorise-pending")
     assert resp.status_code == 200

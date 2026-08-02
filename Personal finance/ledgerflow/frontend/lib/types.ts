@@ -197,6 +197,7 @@ export interface ImportResult {
   skipped: number;
   total_parsed: number;
   categorised: boolean;
+  duplicate_statement: boolean;
 }
 
 export interface CategorisePendingResult {

@@ -12,6 +12,7 @@ Endpoints:
   DELETE /transactions/all              – delete every transaction
   DELETE /transactions/{id}             – delete a single transaction
 """
+import hashlib
 import logging
 import uuid
 from datetime import date
@@ -24,7 +25,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
 from app.core.database import get_db
-from app.models.models import Account, Category, Transaction, User
+from app.models.models import Account, Category, ImportedStatement, Transaction, User
 from app.services.importer import import_csv, import_pdf
 from app.services.ai_engine import categorise_batch
 
@@ -173,6 +174,31 @@ def _get_owned_account(account_id: str, user_id: uuid.UUID, db: Session) -> Acco
     return account
 
 
+def _find_duplicate_statement(account_id: str, file_hash: str, db: Session) -> Optional[ImportedStatement]:
+    """Has this exact file already been imported into this account? Distinct
+    from per-row fingerprint dedupe — this catches the whole-file re-upload
+    case up front, before spending time parsing it again."""
+    return (
+        db.query(ImportedStatement)
+        .filter(ImportedStatement.account_id == uuid.UUID(account_id), ImportedStatement.file_hash == file_hash)
+        .first()
+    )
+
+
+def _record_imported_statement(
+    account_id: str, user_id: uuid.UUID, file_hash: str, filename: str, transaction_count: int, db: Session,
+) -> None:
+    db.add(ImportedStatement(
+        id                = uuid.uuid4(),
+        user_id           = user_id,
+        account_id        = uuid.UUID(account_id),
+        file_hash         = file_hash,
+        filename          = filename,
+        transaction_count = transaction_count,
+    ))
+    db.commit()
+
+
 # ── Endpoints ──────────────────────────────────────────────────────────────────
 
 @router.post("/import/csv", summary="Import transactions from a CSV bank statement")
@@ -186,6 +212,13 @@ async def import_csv_file(
     _get_owned_account(account_id, user.id, db)
 
     contents = await file.read()
+    file_hash = hashlib.sha256(contents).hexdigest()
+    if _find_duplicate_statement(account_id, file_hash, db):
+        return {
+            "inserted": 0, "skipped": 0, "total_parsed": 0, "categorised": False,
+            "duplicate_statement": True,
+        }
+
     try:
         rows = import_csv(contents, account_id)
     except ValueError as e:
@@ -193,12 +226,14 @@ async def import_csv_file(
 
     inserted, skipped = _persist_transactions(rows, user.id, db)
     categorised = _run_ai_categorisation(rows, user.id, db) if auto_categorise else False
+    _record_imported_statement(account_id, user.id, file_hash, file.filename or "statement.csv", len(rows), db)
 
     return {
         "inserted": inserted,
         "skipped": skipped,
         "total_parsed": len(rows),
         "categorised": categorised,
+        "duplicate_statement": False,
     }
 
 
@@ -213,18 +248,27 @@ async def import_pdf_file(
     _get_owned_account(account_id, user.id, db)
 
     contents = await file.read()
+    file_hash = hashlib.sha256(contents).hexdigest()
+    if _find_duplicate_statement(account_id, file_hash, db):
+        return {
+            "inserted": 0, "skipped": 0, "total_parsed": 0, "categorised": False,
+            "duplicate_statement": True,
+        }
+
     rows = import_pdf(contents, account_id)
     if not rows:
         raise HTTPException(status_code=422, detail="No transactions could be extracted from this PDF.")
 
     inserted, skipped = _persist_transactions(rows, user.id, db)
     categorised = _run_ai_categorisation(rows, user.id, db) if auto_categorise else False
+    _record_imported_statement(account_id, user.id, file_hash, file.filename or "statement.pdf", len(rows), db)
 
     return {
         "inserted": inserted,
         "skipped": skipped,
         "total_parsed": len(rows),
         "categorised": categorised,
+        "duplicate_statement": False,
     }
 
 

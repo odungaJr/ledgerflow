@@ -169,6 +169,24 @@ class Transaction(Base):
     category = relationship("Category", back_populates="transactions")
 
 
+class ImportedStatement(Base):
+    """One row per successfully-parsed statement file, so re-uploading the
+    exact same file to the same account can be detected and skipped before
+    it's even parsed — see migration 008."""
+    __tablename__ = "imported_statements"
+    __table_args__ = (
+        UniqueConstraint("account_id", "file_hash", name="uq_imported_statements_account_id_file_hash"),
+    )
+
+    id                = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id           = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    account_id        = Column(UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
+    file_hash         = Column(String(64), nullable=False)   # sha256 hex digest of the raw file bytes
+    filename          = Column(String(255), nullable=False)
+    transaction_count = Column(Integer, nullable=False)
+    imported_at       = Column(DateTime(timezone=True), server_default=func.now())
+
+
 # ── Budgets ────────────────────────────────────────────────────────────────────
 
 class Budget(Base):
