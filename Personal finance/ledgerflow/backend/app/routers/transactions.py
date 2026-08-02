@@ -2,13 +2,15 @@
 Transactions router
 ===================
 Endpoints:
-  POST /transactions/import/csv   – upload a CSV bank statement
-  POST /transactions/import/pdf   – upload a PDF bank statement
-  GET  /transactions              – list transactions (filterable)
-  GET  /transactions/{id}         – single transaction detail
-  PATCH /transactions/{id}        – confirm/update category
-  DELETE /transactions/all        – delete every transaction
-  DELETE /transactions/{id}       – delete a single transaction
+  POST /transactions/import/csv        – upload a CSV bank statement
+  POST /transactions/import/pdf        – upload a PDF bank statement
+  POST /transactions/categorise-pending – run AI categorisation on every
+                                           currently-uncategorised transaction
+  GET  /transactions                   – list transactions (filterable)
+  GET  /transactions/{id}               – single transaction detail
+  PATCH /transactions/{id}              – confirm/update category
+  DELETE /transactions/all              – delete every transaction
+  DELETE /transactions/{id}             – delete a single transaction
 """
 import logging
 import uuid
@@ -104,41 +106,36 @@ def _persist_transactions(raw_rows: list[dict], user_id: uuid.UUID, db: Session)
     return inserted, skipped
 
 
-def _run_ai_categorisation(raw_rows: list[dict], user_id: uuid.UUID, db: Session) -> bool:
+def _categorise_transactions(txns: list[Transaction], user_id: uuid.UUID, db: Session) -> Optional[int]:
     """
-    Call the AI engine and write category + confidence back to the DB.
-    Skips transactions whose fingerprint was already in the DB (already categorised).
+    Call the AI engine on the given transactions and write category +
+    confidence back to the DB. Transactions that already have a category
+    are left untouched.
 
-    Returns True if categorisation ran (or there was nothing to categorise),
-    False if the AI service failed. The transactions themselves are already
-    persisted by this point, so an AI failure here must not fail the request —
-    it just means categorisation is left pending for the user to do manually.
+    Returns the number of transactions categorised, or None if the AI call
+    itself failed (e.g. Ollama isn't running) — the transactions themselves
+    are already persisted by this point, so an AI failure here must not fail
+    the caller's request, it just means categorisation is left pending for
+    the user to do manually.
     """
-    # Fetch freshly inserted transactions using fingerprints
-    fingerprints = [r["fingerprint"] for r in raw_rows]
-    txns = (
-        db.query(Transaction)
-        .filter(Transaction.fingerprint.in_(fingerprints), Transaction.user_id == user_id)
-        .all()
-    )
-
     payload = [
         {"id": str(t.id), "description": t.description, "amount": str(t.amount), "type": t.type.value}
         for t in txns if t.category_id is None
     ]
     if not payload:
-        return True
+        return 0
 
     try:
         suggestions = categorise_batch(payload)
     except Exception:
         logger.exception("AI categorisation failed; transactions remain uncategorised")
-        return False
+        return None
 
     # Build a name→id lookup for this user's own categories
     categories = {c.name: c for c in db.query(Category).filter(Category.user_id == user_id).all()}
 
     txn_map = {str(t.id): t for t in txns}
+    updated = 0
     for suggestion in suggestions:
         txn = txn_map.get(suggestion["transaction_id"])
         if txn is None:
@@ -148,9 +145,25 @@ def _run_ai_categorisation(raw_rows: list[dict], user_id: uuid.UUID, db: Session
         txn.ai_category    = suggestion["category"]
         txn.ai_confidence  = suggestion["confidence"]
         txn.is_confirmed   = False
+        updated += 1
 
     db.commit()
-    return True
+    return updated
+
+
+def _run_ai_categorisation(raw_rows: list[dict], user_id: uuid.UUID, db: Session) -> bool:
+    """
+    Same as _categorise_transactions, scoped to the rows from one import
+    batch (matched back up via fingerprint). Returns True if categorisation
+    ran (or there was nothing to categorise), False if the AI service failed.
+    """
+    fingerprints = [r["fingerprint"] for r in raw_rows]
+    txns = (
+        db.query(Transaction)
+        .filter(Transaction.fingerprint.in_(fingerprints), Transaction.user_id == user_id)
+        .all()
+    )
+    return _categorise_transactions(txns, user_id, db) is not None
 
 
 def _get_owned_account(account_id: str, user_id: uuid.UUID, db: Session) -> Account:
@@ -212,6 +225,24 @@ async def import_pdf_file(
         "skipped": skipped,
         "total_parsed": len(rows),
         "categorised": categorised,
+    }
+
+
+@router.post("/categorise-pending", summary="Run AI categorisation on every currently-uncategorised transaction")
+def categorise_pending_transactions(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    txns = (
+        db.query(Transaction)
+        .filter(Transaction.user_id == user.id, Transaction.category_id.is_(None))
+        .all()
+    )
+    if not txns:
+        return {"scanned": 0, "categorised": 0, "ai_available": True}
+
+    updated = _categorise_transactions(txns, user.id, db)
+    return {
+        "scanned":      len(txns),
+        "categorised":  updated or 0,
+        "ai_available": updated is not None,
     }
 
 

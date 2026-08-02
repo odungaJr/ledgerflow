@@ -5,6 +5,7 @@ import type {
   AssetsSummary,
   BudgetStatus,
   Category,
+  CategorisePendingResult,
   DashboardInsightsResponse,
   DashboardSummaryResponse,
   ImportResult,
@@ -173,6 +174,9 @@ export async function importStatement(
   }
   return res.json();
 }
+
+export const categorisePendingTransactions = () =>
+  request<CategorisePendingResult>("/transactions/categorise-pending", { method: "POST" });
 
 // ── Budgets ──────────────────────────────────────────────────────────────────
 

@@ -1,6 +1,6 @@
 # LedgerFlow — Status
 
-**Last updated:** 2026-08-02 (local AI via Ollama)
+**Last updated:** 2026-08-02 (scan & categorise button)
 
 For the full "why" behind any of these — architecture decisions, tradeoffs,
 things fixed and why they broke — that detail lives in `RECAP.md` (kept
@@ -11,7 +11,7 @@ local, not in this repo).
 ## Current status
 
 Live locally via Docker (`http://localhost`), multi-tenant (open
-registration, every account's data is fully private), 179 backend tests
+registration, every account's data is fully private), 183 backend tests
 passing. Actively developed.
 
 ## Known blockers
@@ -20,6 +20,11 @@ passing. Actively developed.
 
 ## Changelog
 
+- Added a "Scan & categorise" button on the Transactions page — runs AI
+  categorisation on demand over every currently-uncategorised transaction
+  across all accounts (`POST /transactions/categorise-pending`), not just
+  newly-imported ones. Auto-categorise-on-import already existed and needed
+  no change. Live-verified end-to-end against the real local Ollama model.
 - Replaced Anthropic Claude with a free, local Ollama model
   (`qwen2.5:7b-instruct`) for all AI features — categorisation, anomaly
   detection, and insights. Removes the Anthropic billing blocker entirely

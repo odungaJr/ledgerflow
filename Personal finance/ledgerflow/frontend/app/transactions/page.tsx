@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import {
   ApiError,
   bulkPatchTransactions,
+  categorisePendingTransactions,
   deleteAllTransactions,
   deleteTransaction,
   getAccounts,
@@ -14,7 +15,7 @@ import {
   patchTransaction,
 } from "@/lib/api";
 import { formatDate, formatMoney } from "@/lib/format";
-import type { Account, Category, ImportResult, Transaction } from "@/lib/types";
+import type { Account, Category, CategorisePendingResult, ImportResult, Transaction } from "@/lib/types";
 
 const PAGE_SIZE = 50;
 
@@ -47,6 +48,10 @@ export default function TransactionsPage() {
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
+
+  const [categorising, setCategorising] = useState(false);
+  const [categoriseError, setCategoriseError] = useState<string | null>(null);
+  const [categoriseResult, setCategoriseResult] = useState<CategorisePendingResult | null>(null);
 
   const loadTransactions = useCallback(() => {
     getTransactions({
@@ -127,6 +132,21 @@ export default function TransactionsPage() {
 
   function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
     setImportFile(e.target.files?.[0] ?? null);
+  }
+
+  async function handleCategorisePending() {
+    setCategorising(true);
+    setCategoriseError(null);
+    setCategoriseResult(null);
+    try {
+      const result = await categorisePendingTransactions();
+      setCategoriseResult(result);
+      loadTransactions();
+    } catch (e) {
+      setCategoriseError(e instanceof ApiError ? e.message : "Failed to run AI categorisation");
+    } finally {
+      setCategorising(false);
+    }
   }
 
   async function handleCategorise(txn: Transaction, categoryName: string) {
@@ -269,6 +289,29 @@ export default function TransactionsPage() {
             </div>
           )}
         </form>
+
+        <div className="spacer card" style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+          <div style={{ flex: "1 1 260px" }}>
+            <p className="statLabel">AI categorisation</p>
+            <p style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
+              Scan every uncategorised transaction across all accounts and let AI suggest a
+              category (runs locally via Ollama — no data leaves this machine).
+            </p>
+          </div>
+          <button className="btn" onClick={handleCategorisePending} disabled={categorising}>
+            {categorising ? "Scanning…" : "Scan & categorise"}
+          </button>
+        </div>
+        {categoriseError && <div className="alert error">{categoriseError}</div>}
+        {categoriseResult && (
+          <div className="alert info">
+            {categoriseResult.scanned === 0
+              ? "No uncategorised transactions found — everything's already categorised."
+              : categoriseResult.ai_available
+              ? `Categorised ${categoriseResult.categorised} of ${categoriseResult.scanned} uncategorised transaction${categoriseResult.scanned === 1 ? "" : "s"}.`
+              : "AI categorisation isn't available right now (is Ollama running?) — try again shortly."}
+          </div>
+        )}
 
         <div className="spacer">
           <h2 className="sectionTitle">Filters</h2>

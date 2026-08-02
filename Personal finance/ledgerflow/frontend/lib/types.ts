@@ -199,6 +199,12 @@ export interface ImportResult {
   categorised: boolean;
 }
 
+export interface CategorisePendingResult {
+  scanned: number;
+  categorised: number;
+  ai_available: boolean;
+}
+
 export interface PnlRow {
   name: string;
   icon: string;

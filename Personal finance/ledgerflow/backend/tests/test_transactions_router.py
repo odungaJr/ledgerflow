@@ -51,6 +51,76 @@ def test_import_runs_ai_by_default(client, monkeypatch, seed_categories):
     assert txns[0]["category"] == "Transport"
 
 
+def test_categorise_pending_reports_no_transactions_when_nothing_uncategorised(client):
+    resp = client.post("/transactions/categorise-pending")
+    assert resp.status_code == 200
+    assert resp.json() == {"scanned": 0, "categorised": 0, "ai_available": True}
+
+
+def test_categorise_pending_categorises_uncategorised_transactions(client, monkeypatch, seed_categories):
+    account_id = _make_account(client)
+    client.post(
+        "/transactions/import/csv",
+        data={"account_id": account_id, "auto_categorise": "false"},
+        files={"file": ("statement.csv", io.BytesIO(CSV_BYTES), "text/csv")},
+    )
+
+    def _fake_categorise(payload):
+        return [{"transaction_id": payload[0]["id"], "category": "Transport", "confidence": 0.9}]
+
+    monkeypatch.setattr("app.routers.transactions.categorise_batch", _fake_categorise)
+
+    resp = client.post("/transactions/categorise-pending")
+    assert resp.status_code == 200
+    assert resp.json() == {"scanned": 1, "categorised": 1, "ai_available": True}
+
+    txns = client.get("/transactions").json()
+    assert txns[0]["category"] == "Transport"
+
+
+def test_categorise_pending_reports_when_ai_service_fails(client, monkeypatch):
+    account_id = _make_account(client)
+    client.post(
+        "/transactions/import/csv",
+        data={"account_id": account_id, "auto_categorise": "false"},
+        files={"file": ("statement.csv", io.BytesIO(CSV_BYTES), "text/csv")},
+    )
+
+    def _raise(*args, **kwargs):
+        raise ConnectionError("Ollama isn't running")
+
+    monkeypatch.setattr("app.routers.transactions.categorise_batch", _raise)
+
+    resp = client.post("/transactions/categorise-pending")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body == {"scanned": 1, "categorised": 0, "ai_available": False}
+
+    # Transaction is untouched, left for the user to categorise manually.
+    txns = client.get("/transactions").json()
+    assert txns[0]["category"] is None
+
+
+def test_categorise_pending_leaves_already_categorised_transactions_alone(client, monkeypatch, seed_categories):
+    account_id = _make_account(client)
+
+    def _fake_categorise(payload):
+        return [{"transaction_id": payload[0]["id"], "category": "Transport", "confidence": 0.9}]
+
+    monkeypatch.setattr("app.routers.transactions.categorise_batch", _fake_categorise)
+
+    client.post(
+        "/transactions/import/csv",
+        data={"account_id": account_id},
+        files={"file": ("statement.csv", io.BytesIO(CSV_BYTES), "text/csv")},
+    )
+
+    # Already categorised by the import above — nothing left to scan.
+    resp = client.post("/transactions/categorise-pending")
+    assert resp.status_code == 200
+    assert resp.json() == {"scanned": 0, "categorised": 0, "ai_available": True}
+
+
 CSV_TWO_ROWS = (
     b"Date,Description,Debit,Credit,Balance\n"
     b"15/04/2024,ATM WITHDRAWAL KARIAKOO,50000.00,,2340500.00\n"
