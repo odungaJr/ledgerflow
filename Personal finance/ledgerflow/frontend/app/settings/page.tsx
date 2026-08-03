@@ -153,7 +153,6 @@ function CategoriesSection() {
   const [error, setError] = useState<string | null>(null);
 
   const [name, setName] = useState("");
-  const [icon, setIcon] = useState("💳");
   const [isIncome, setIsIncome] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -179,9 +178,8 @@ function CategoriesSection() {
     }
     setSubmitting(true);
     try {
-      await createCategory({ name: name.trim(), icon: icon.trim() || undefined, is_income: isIncome });
+      await createCategory({ name: name.trim(), is_income: isIncome });
       setName("");
-      setIcon("💳");
       setIsIncome(false);
       load();
     } catch (e) {
@@ -215,10 +213,6 @@ function CategoriesSection() {
 
       <form className="form" onSubmit={handleCreate} style={{ maxWidth: "none" }}>
         <div className="formInline">
-          <div className="formRow" style={{ minWidth: "80px", flex: "0 0 80px" }}>
-            <label htmlFor="cat-icon">Icon</label>
-            <input id="cat-icon" value={icon} onChange={(e) => setIcon(e.target.value)} maxLength={4} />
-          </div>
           <div className="formRow">
             <label htmlFor="cat-name">Name</label>
             <input id="cat-name" value={name} onChange={(e) => setName(e.target.value)} required />
@@ -275,15 +269,15 @@ function CategoryList({
       <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
         {categories.map((c) => (
           <span key={c.id} className="badge neutral" style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
-            {c.icon} {c.name}
+            {c.name}
             {!c.is_system && (
               <button
                 type="button"
                 onClick={() => onDelete(c)}
                 aria-label={`Delete ${c.name}`}
-                style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", padding: 0, fontSize: "0.9rem" }}
+                style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", padding: 0, fontSize: "0.75rem", textDecoration: "underline" }}
               >
-                ✕
+                Remove
               </button>
             )}
           </span>

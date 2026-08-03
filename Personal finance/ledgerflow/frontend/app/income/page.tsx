@@ -241,7 +241,7 @@ export default function IncomePage() {
                 <option value="">None</option>
                 {categories.map((c) => (
                   <option key={c.id} value={c.name}>
-                    {c.icon} {c.name}
+                    {c.name}
                   </option>
                 ))}
               </select>
@@ -308,7 +308,7 @@ export default function IncomePage() {
                     <div>
                       <p className="statLabel" style={{ margin: 0 }}>
                         {entry.source}
-                        {entry.is_recurring && ` · 🔁 ${entry.recurrence_period}`}
+                        {entry.is_recurring && ` · Recurring (${entry.recurrence_period})`}
                       </p>
                       {entry.category && (
                         <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", margin: 0 }}>

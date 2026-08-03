@@ -103,7 +103,7 @@ export default function BudgetsPage() {
                 >
                   {categories.map((c) => (
                     <option key={c.id} value={c.name}>
-                      {c.icon} {c.name}
+                      {c.name}
                     </option>
                   ))}
                 </select>

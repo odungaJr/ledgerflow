@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import Sparkline from "@/components/Sparkline";
 import IncomeExpenseChart from "@/components/charts/IncomeExpenseChart";
 import CategoryBarChart from "@/components/charts/CategoryBarChart";
+import CategoryPieChart from "@/components/charts/CategoryPieChart";
 import { ApiError, getDashboardInsights, getDashboardSummary, getIncomeEntries, getTransactions } from "@/lib/api";
 import { dateToIso, todayIso } from "@/lib/date";
 import { formatMoney } from "@/lib/format";
@@ -208,14 +209,34 @@ export default function DashboardPage() {
 
             <div className="spacer">
               <h2 className="sectionTitle">Top categories</h2>
-              <CategoryBarChart
-                data={data.summary.top_categories}
-                currency={currency}
-                onSelect={(name) => {
-                  const url = categoryDrilldownUrl(name);
-                  if (url) router.push(url);
-                }}
-              />
+              <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))" }}>
+                <div className="card">
+                  <p className="statLabel" style={{ marginBottom: "0.75rem" }}>
+                    Share of spending
+                  </p>
+                  <CategoryPieChart
+                    data={data.summary.top_categories}
+                    currency={currency}
+                    onSelect={(name) => {
+                      const url = categoryDrilldownUrl(name);
+                      if (url) router.push(url);
+                    }}
+                  />
+                </div>
+                <div className="card">
+                  <p className="statLabel" style={{ marginBottom: "0.75rem" }}>
+                    Spend vs. budget
+                  </p>
+                  <CategoryBarChart
+                    data={data.summary.top_categories}
+                    currency={currency}
+                    onSelect={(name) => {
+                      const url = categoryDrilldownUrl(name);
+                      if (url) router.push(url);
+                    }}
+                  />
+                </div>
+              </div>
             </div>
 
             <div className="spacer">

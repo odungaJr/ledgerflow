@@ -220,7 +220,7 @@ function PnlTable({
           {rows.map((r) => (
             <tr key={r.name}>
               <td data-label="Category">
-                {r.icon} {r.name}
+                {r.name}
               </td>
               <td data-label="Amount">{formatMoney(r.total, currency)}</td>
               <td data-label="% of total">{total > 0 ? `${((r.total / total) * 100).toFixed(1)}%` : "—"}</td>

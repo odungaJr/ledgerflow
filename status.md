@@ -1,6 +1,6 @@
 # LedgerFlow — Status
 
-**Last updated:** 2026-08-02 (AI reliability fixes: timeouts, honest failure reporting)
+**Last updated:** 2026-08-03 (category pie chart, dropped emoji icons)
 
 For the full "why" behind any of these — architecture decisions, tradeoffs,
 things fixed and why they broke — that detail lives in `RECAP.md` (kept
@@ -20,6 +20,13 @@ passing. Actively developed.
 
 ## Changelog
 
+- Added a pie chart for the Dashboard's top spending categories (alongside
+  the existing budget-vs-spend bar chart, not replacing it); removed emoji
+  category icons everywhere in the UI (transactions, budgets, income,
+  settings, PnL report) for a cleaner look, and dropped the icon picker from
+  category creation — a handful of other stray emoji (mobile menu
+  hamburger/close, recurring-income marker, category-chip delete) replaced
+  with plain text too
 - Fixed two more real bugs hit live: (1) AI categorisation could silently
   report success with 0 transactions changed when Ollama returned nothing
   usable, instead of telling the user AI wasn't available; (2) the

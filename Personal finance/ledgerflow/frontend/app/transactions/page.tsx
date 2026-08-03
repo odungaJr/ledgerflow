@@ -430,7 +430,7 @@ export default function TransactionsPage() {
                 <option value="">All categories</option>
                 {categories.map((c) => (
                   <option key={c.id} value={c.name}>
-                    {c.icon} {c.name}
+                    {c.name}
                   </option>
                 ))}
               </select>
@@ -488,7 +488,7 @@ export default function TransactionsPage() {
                     </option>
                     {categories.map((c) => (
                       <option key={c.id} value={c.name}>
-                        {c.icon} {c.name}
+                        {c.name}
                       </option>
                     ))}
                   </select>
@@ -557,7 +557,7 @@ export default function TransactionsPage() {
                               </option>
                               {categories.map((c) => (
                                 <option key={c.id} value={c.name}>
-                                  {c.icon} {c.name}
+                                  {c.name}
                                 </option>
                               ))}
                             </select>
