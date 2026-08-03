@@ -172,6 +172,24 @@ def test_categorise_pending_reports_when_ai_service_fails(client, monkeypatch):
     assert txns[0]["category"] is None
 
 
+def test_categorise_pending_reports_unavailable_when_ai_returns_nothing_usable(client, monkeypatch):
+    """The AI call can succeed but still return no usable suggestions (e.g. a
+    small local model replying with malformed JSON) — that must be reported
+    the same as an outright failure, not as a silent success with 0 changes."""
+    account_id = _make_account(client)
+    client.post(
+        "/transactions/import/csv",
+        data={"account_id": account_id, "auto_categorise": "false"},
+        files={"file": ("statement.csv", io.BytesIO(CSV_BYTES), "text/csv")},
+    )
+
+    monkeypatch.setattr("app.routers.transactions.categorise_batch", lambda payload: [])
+
+    resp = client.post("/transactions/categorise-pending")
+    assert resp.status_code == 200
+    assert resp.json() == {"scanned": 1, "categorised": 0, "ai_available": False}
+
+
 def test_categorise_pending_leaves_already_categorised_transactions_alone(client, monkeypatch, seed_categories):
     account_id = _make_account(client)
 

@@ -43,7 +43,7 @@ VALID_CATEGORIES = [
 ]
 
 
-def _ollama_chat(prompt: str, *, json_mode: bool = False, timeout: int = 120) -> str:
+def _ollama_chat(prompt: str, *, json_mode: bool = False, timeout: int = 240) -> str:
     """Send a single-turn prompt to the local Ollama server, return the reply text.
 
     Raises urllib.error.URLError (e.g. connection refused if Ollama isn't
@@ -54,6 +54,12 @@ def _ollama_chat(prompt: str, *, json_mode: bool = False, timeout: int = 120) ->
         "model": OLLAMA_MODEL,
         "messages": [{"role": "user", "content": prompt}],
         "stream": False,
+        # Keep the model loaded between calls so a call shortly after the
+        # last one doesn't pay for a cold model load (multi-GB, can take
+        # long enough under system load to blow past the timeout) on top of
+        # actual inference. Ollama's own default is 5m; this just widens it
+        # for a more forgiving margin during an active session.
+        "keep_alive": "30m",
     }
     if json_mode:
         body["format"] = "json"  # constrains generation to valid JSON
@@ -79,17 +85,22 @@ def _strip_code_fence(raw: str) -> str:
 
 
 def _coerce_to_list(parsed) -> list:
-    """A requested top-level JSON array sometimes comes back wrapped in an
-    object instead (e.g. {"transactions": [...]}) despite explicit
-    instructions not to — observed with qwen2.5 even under a strict array
-    JSON schema. Unwrap the first list value found rather than fighting the
-    model's own instinct to name things."""
+    """A requested top-level JSON array sometimes comes back shaped
+    differently — observed with qwen2.5 even under a strict array JSON
+    schema:
+      - wrapped in an object, e.g. {"transactions": [...]}
+      - collapsed into a single bare object instead of a one-item array,
+        e.g. {"id": 1, "category": "...", "confidence": 0.9} when the
+        model apparently felt confident enough to skip the array wrapper
+    Recover both rather than fighting the model's formatting instincts."""
     if isinstance(parsed, list):
         return parsed
     if isinstance(parsed, dict):
         for value in parsed.values():
             if isinstance(value, list):
                 return value
+        if parsed:
+            return [parsed]
     return []
 
 

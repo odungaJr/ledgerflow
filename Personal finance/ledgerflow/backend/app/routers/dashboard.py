@@ -6,9 +6,10 @@ Endpoints:
   GET /dashboard/insights         – AI-generated financial health report
   GET /dashboard/categories       – spending breakdown per category
 """
+import logging
 from datetime import date
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
@@ -21,6 +22,7 @@ from app.services.liability_engine import get_liabilities_summary, get_net_worth
 from app.models.models import Transaction, User
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
+logger = logging.getLogger(__name__)
 
 
 @router.get("/summary", summary="Monthly financial summary with budget alerts")
@@ -78,10 +80,16 @@ def monthly_insights(
         for t in txns
     ]
 
-    anomalies = detect_anomalies(txn_dicts)
-    summary["anomalies"] = anomalies
-
-    narrative = generate_insights(summary)
+    try:
+        anomalies = detect_anomalies(txn_dicts)
+        summary["anomalies"] = anomalies
+        narrative = generate_insights(summary)
+    except Exception:
+        logger.exception("AI insights generation failed")
+        raise HTTPException(
+            status_code=503,
+            detail="AI insights aren't available right now — is Ollama running?",
+        )
 
     return {
         "period":    summary["period"],

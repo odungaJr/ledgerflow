@@ -113,11 +113,15 @@ def _categorise_transactions(txns: list[Transaction], user_id: uuid.UUID, db: Se
     confidence back to the DB. Transactions that already have a category
     are left untouched.
 
-    Returns the number of transactions categorised, or None if the AI call
-    itself failed (e.g. Ollama isn't running) — the transactions themselves
-    are already persisted by this point, so an AI failure here must not fail
-    the caller's request, it just means categorisation is left pending for
-    the user to do manually.
+    Returns the number of transactions categorised, or None if AI
+    categorisation didn't actually happen — either the call itself failed
+    (e.g. Ollama isn't running) or it ran but returned nothing usable for
+    any of the given transactions (a small local model occasionally replies
+    with something that doesn't match what was asked for). Either way the
+    transactions themselves are already persisted by this point, so this
+    must not fail the caller's request — callers report it as "categorised:
+    false" / "ai_available: false" so the user knows to retry rather than
+    being told it worked when nothing actually changed.
     """
     payload = [
         {"id": str(t.id), "description": t.description, "amount": str(t.amount), "type": t.type.value}
@@ -130,6 +134,10 @@ def _categorise_transactions(txns: list[Transaction], user_id: uuid.UUID, db: Se
         suggestions = categorise_batch(payload)
     except Exception:
         logger.exception("AI categorisation failed; transactions remain uncategorised")
+        return None
+
+    if not suggestions:
+        logger.warning("AI categorisation returned nothing usable for %d transaction(s)", len(payload))
         return None
 
     # Build a name→id lookup for this user's own categories

@@ -1,6 +1,6 @@
 # LedgerFlow — Status
 
-**Last updated:** 2026-08-02 (fix: clear-all-transactions leftover dedupe bug)
+**Last updated:** 2026-08-02 (AI reliability fixes: timeouts, honest failure reporting)
 
 For the full "why" behind any of these — architecture decisions, tradeoffs,
 things fixed and why they broke — that detail lives in `RECAP.md` (kept
@@ -11,7 +11,7 @@ local, not in this repo).
 ## Current status
 
 Live locally via Docker (`http://localhost`), multi-tenant (open
-registration, every account's data is fully private), 187 backend tests
+registration, every account's data is fully private), 189 backend tests
 passing. Actively developed.
 
 ## Known blockers
@@ -20,6 +20,14 @@ passing. Actively developed.
 
 ## Changelog
 
+- Fixed two more real bugs hit live: (1) AI categorisation could silently
+  report success with 0 transactions changed when Ollama returned nothing
+  usable, instead of telling the user AI wasn't available; (2) the
+  `/dashboard/insights` page threw a raw 500 whenever the AI call failed
+  instead of a clean "AI isn't available right now" message. Also raised
+  the Ollama request timeout (120s → 240s) and told Ollama to keep the
+  model loaded for 30 minutes instead of 5, to cut down on cold-start
+  timeouts during active use
 - Fixed a real bug hit live: "Clear all transactions" only deleted
   `transactions`, not the new `imported_statements` records — so re-uploading
   a statement after a full wipe was wrongly rejected as a duplicate. The wipe

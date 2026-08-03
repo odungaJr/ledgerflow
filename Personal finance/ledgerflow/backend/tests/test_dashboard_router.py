@@ -45,3 +45,14 @@ def test_dashboard_summary_includes_monthly_trend(client):
     trend = resp.json()["monthly_trend"]
     assert len(trend) == 6
     assert trend[-1]["period"] == "Jun 2026"
+
+
+def test_insights_reports_a_clean_error_when_ai_is_unavailable(client, monkeypatch):
+    def _raise(*args, **kwargs):
+        raise ConnectionError("Ollama isn't running")
+
+    monkeypatch.setattr("app.routers.dashboard.detect_anomalies", _raise)
+
+    resp = client.get("/dashboard/insights", params={"year": 2026, "month": 6})
+    assert resp.status_code == 503
+    assert "Ollama" in resp.json()["detail"]
