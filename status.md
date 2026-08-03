@@ -1,6 +1,6 @@
 # LedgerFlow — Status
 
-**Last updated:** 2026-08-03 (category pie chart, dropped emoji icons)
+**Last updated:** 2026-08-03 (pre-launch verification — green light to use it)
 
 For the full "why" behind any of these — architecture decisions, tradeoffs,
 things fixed and why they broke — that detail lives in `RECAP.md` (kept
@@ -20,6 +20,11 @@ passing. Actively developed.
 
 ## Changelog
 
+- Full pre-launch verification pass: clean git/CI state, 189/189 backend
+  tests passing, all Docker containers healthy, and a live smoke test
+  covering import, auto-categorisation, duplicate detection, AI insights,
+  and PDF export — all working. Real account data confirmed untouched.
+  Given the green light to actually start using the app day-to-day
 - Added a pie chart for the Dashboard's top spending categories (alongside
   the existing budget-vs-spend bar chart, not replacing it); removed emoji
   category icons everywhere in the UI (transactions, budgets, income,
