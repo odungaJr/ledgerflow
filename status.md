@@ -27,7 +27,9 @@ passing. Actively developed.
   on Caddy, so a crash now self-heals automatically. Also added a
   standalone watchdog (`scripts/healthcheck.sh` + a LaunchAgent, checking
   every 2 minutes) that fires a native Mac notification if the app goes
-  down and Docker's own restart didn't fix it
+  down and Docker's own restart didn't fix it — had to move the actual
+  running script out of `~/Documents` to `~/Library/Application Support/`
+  since macOS silently blocks LaunchAgents from reading files there
 - Full pre-launch verification pass: clean git/CI state, 189/189 backend
   tests passing, all Docker containers healthy, and a live smoke test
   covering import, auto-categorisation, duplicate detection, AI insights,

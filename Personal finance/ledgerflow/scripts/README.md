@@ -26,25 +26,45 @@ which a silent restart doesn't do.
 
 ### Setup (one-time, per machine)
 
-`com.moxplosion.ledgerflow.healthcheck.plist.template` is the LaunchAgent
-definition. The live copy lives outside this repo (`~/Library/LaunchAgents/`
-is a personal machine path, not project source) and needs the absolute path
-inside it to match wherever this repo is checked out. To install:
+**The script that actually runs must NOT live under `~/Documents` (or
+Desktop/Downloads).** macOS's TCC privacy protection blocks LaunchAgents
+(and other launchd-spawned processes) from reading files in those folders
+even when they're world-readable and Terminal.app can read them fine —
+Terminal has its own separate, previously-granted access; a fresh launchd
+child does not inherit it. The failure is silent and easy to miss: the job
+"runs" (`launchctl list` shows a normal exit status) but every invocation
+actually fails immediately with `zsh: can't open input file`, visible only
+in the stderr log — nothing on screen suggests anything is wrong, and
+`docker ps` still shows Caddy healthy because Docker's own `restart:
+unless-stopped` was independently working. Hit exactly this the first time
+this watchdog was set up (2026-08-27).
+
+So: keep the tracked copy here in the repo (`healthcheck.sh`), but install
+the copy that actually executes to `~/Library/Application Support/`
+instead — not TCC-protected — and point the LaunchAgent at *that* copy.
 
 ```bash
+mkdir -p ~/Library/Application\ Support/ledgerflow-healthcheck
+cp scripts/healthcheck.sh ~/Library/Application\ Support/ledgerflow-healthcheck/healthcheck.sh
+chmod +x ~/Library/Application\ Support/ledgerflow-healthcheck/healthcheck.sh
+
 cp scripts/com.moxplosion.ledgerflow.healthcheck.plist.template \
    ~/Library/LaunchAgents/com.moxplosion.ledgerflow.healthcheck.plist
-# edit the ProgramArguments path inside if this repo isn't at the same
-# location as when the template was generated
-chmod +x scripts/healthcheck.sh
 launchctl load ~/Library/LaunchAgents/com.moxplosion.ledgerflow.healthcheck.plist
 ```
 
-To check it's running: `launchctl list | grep ledgerflow`.
+If you ever edit `healthcheck.sh` in the repo, re-copy it to the Application
+Support location afterward — that's the copy that actually runs, the repo
+copy is just the tracked source.
+
+To check it's running: `launchctl list | grep ledgerflow` (exit status `0`
+after a run). To force an immediate run instead of waiting for the next
+2-minute interval: `launchctl start com.moxplosion.ledgerflow.healthcheck`.
 
 To uninstall:
 
 ```bash
 launchctl unload ~/Library/LaunchAgents/com.moxplosion.ledgerflow.healthcheck.plist
 rm ~/Library/LaunchAgents/com.moxplosion.ledgerflow.healthcheck.plist
+rm -rf ~/Library/Application\ Support/ledgerflow-healthcheck
 ```

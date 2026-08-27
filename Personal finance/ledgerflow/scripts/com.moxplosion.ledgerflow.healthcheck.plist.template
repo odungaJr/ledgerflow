@@ -7,7 +7,7 @@
     <key>ProgramArguments</key>
     <array>
         <string>/bin/zsh</string>
-        <string>/Users/mosesodunga/Documents/20_Projects/25_Personal_Fintech/Personal finance/ledgerflow/scripts/healthcheck.sh</string>
+        <string>/Users/mosesodunga/Library/Application Support/ledgerflow-healthcheck/healthcheck.sh</string>
     </array>
     <key>StartInterval</key>
     <integer>120</integer>
