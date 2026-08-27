@@ -29,6 +29,16 @@ const STATUS_LABEL: Record<IncomeEntry["status"], string> = {
   pending: "Pending",
 };
 
+function monthlyStatus(summary: IncomeSummary): { label: string; tone: "ok" | "warning" | "danger" | "neutral" } {
+  if (summary.total_expected === 0) return { label: "Nothing expected", tone: "neutral" };
+  if (summary.overdue_count > 0) {
+    return { label: `Overdue (${summary.overdue_count})`, tone: "danger" };
+  }
+  if (summary.total_pending === 0) return { label: "Fully received", tone: "ok" };
+  if (summary.total_received > 0) return { label: "Partially received", tone: "warning" };
+  return { label: "Pending", tone: "neutral" };
+}
+
 export default function IncomePage() {
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
@@ -147,6 +157,10 @@ export default function IncomePage() {
     month: "long",
     year: "numeric",
   });
+  const status = summary ? monthlyStatus(summary) : null;
+  const pctReceived = summary && summary.total_expected > 0
+    ? (summary.total_received / summary.total_expected) * 100
+    : 0;
 
   return (
     <main className="page">
@@ -158,6 +172,7 @@ export default function IncomePage() {
               ‹
             </button>
             <span className="badge neutral">{periodLabel}</span>
+            {status && <span className={`badge ${status.tone}`}>{status.label}</span>}
             <button className="btn btnSecondary btnSmall" onClick={() => changeMonth(1)}>
               ›
             </button>
@@ -215,6 +230,21 @@ export default function IncomePage() {
                 )}
               </div>
             </div>
+
+            {summary.total_expected > 0 && status && (
+              <div className="card spacer">
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem", marginBottom: "0.4rem" }}>
+                  <span>{status.label}</span>
+                  <span style={{ color: "var(--text-muted)" }}>{Math.round(pctReceived)}% received</span>
+                </div>
+                <div className="progress">
+                  <div
+                    className={`progressFill ${status.tone === "warning" || status.tone === "danger" ? status.tone : ""}`}
+                    style={{ width: `${Math.min(pctReceived, 100)}%` }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         )}
 

@@ -1,6 +1,6 @@
 # LedgerFlow — Status
 
-**Last updated:** 2026-08-27 (Caddy auto-restart + down-alert watchdog)
+**Last updated:** 2026-08-27 (Income page: at-a-glance monthly status)
 
 For the full "why" behind any of these — architecture decisions, tradeoffs,
 things fixed and why they broke — that detail lives in `RECAP.md` (kept
@@ -20,6 +20,11 @@ passing. Actively developed.
 
 ## Changelog
 
+- Income page now shows an at-a-glance monthly status badge (Fully
+  received / Partially received / Overdue / Pending / Nothing expected)
+  next to the month selector, plus a "% received" progress bar in the
+  monthly summary — same status logic already used for individual entries,
+  just rolled up for the whole month
 - Caddy went down (`resource deadlock avoided` reading the bind-mounted
   Caddyfile — a Docker Desktop for Mac mount glitch, not a config problem)
   and stayed down since nothing was set to restart it. Fixed properly:
