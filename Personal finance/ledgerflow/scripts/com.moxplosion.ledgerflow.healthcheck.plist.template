@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.moxplosion.ledgerflow.healthcheck</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/zsh</string>
+        <string>/Users/mosesodunga/Documents/20_Projects/25_Personal_Fintech/Personal finance/ledgerflow/scripts/healthcheck.sh</string>
+    </array>
+    <key>StartInterval</key>
+    <integer>120</integer>
+    <key>RunAtLoad</key>
+    <false/>
+    <key>StandardOutPath</key>
+    <string>/tmp/ledgerflow_healthcheck.stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/ledgerflow_healthcheck.stderr.log</string>
+</dict>
+</plist>

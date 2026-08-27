@@ -1,6 +1,6 @@
 # LedgerFlow — Status
 
-**Last updated:** 2026-08-03 (pre-launch verification — green light to use it)
+**Last updated:** 2026-08-27 (Caddy auto-restart + down-alert watchdog)
 
 For the full "why" behind any of these — architecture decisions, tradeoffs,
 things fixed and why they broke — that detail lives in `RECAP.md` (kept
@@ -20,6 +20,14 @@ passing. Actively developed.
 
 ## Changelog
 
+- Caddy went down (`resource deadlock avoided` reading the bind-mounted
+  Caddyfile — a Docker Desktop for Mac mount glitch, not a config problem)
+  and stayed down since nothing was set to restart it. Fixed properly:
+  `restart: unless-stopped` on every service plus a real Docker healthcheck
+  on Caddy, so a crash now self-heals automatically. Also added a
+  standalone watchdog (`scripts/healthcheck.sh` + a LaunchAgent, checking
+  every 2 minutes) that fires a native Mac notification if the app goes
+  down and Docker's own restart didn't fix it
 - Full pre-launch verification pass: clean git/CI state, 189/189 backend
   tests passing, all Docker containers healthy, and a live smoke test
   covering import, auto-categorisation, duplicate detection, AI insights,
