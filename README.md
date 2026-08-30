@@ -9,9 +9,9 @@ Multi-tenant — each registered user gets fully private data.
 ## Features
 
 - **Bank statement import** — CSV and PDF, with automatic deduplication
-- **AI-powered categorisation** — Claude suggests a category for each
-  imported transaction; anomaly detection and a narrative monthly insights
-  report
+- **AI-powered categorisation** — a local Ollama model suggests a category
+  for each imported transaction; anomaly detection and a narrative monthly
+  insights report
 - **Budgets** — monthly or weekly caps per category, with warning/breach
   alerts
 - **Income tracking** — one-off or recurring entries, expected vs. received,
