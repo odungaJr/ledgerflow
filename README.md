@@ -1,6 +1,7 @@
 # LedgerFlow
 
 [![Backend tests](https://github.com/odungaJr/ledgerflow/actions/workflows/backend-tests.yml/badge.svg)](https://github.com/odungaJr/ledgerflow/actions/workflows/backend-tests.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 A personal finance tracker with AI-assisted categorisation, budgets, income
 tracking, assets and liabilities, and a dashboard that ties it all together.
@@ -79,3 +80,10 @@ Personal finance/ledgerflow/
 
 Actively developed, personal project. Holds real financial data for its
 users — never commit `.env` files or database backups (see `.gitignore`).
+
+This started as a personal idea and is open for anyone to fork, adapt, and
+improve — contributions and forks are welcome.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
